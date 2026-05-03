@@ -2,9 +2,12 @@
 
 A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Minecraft server. Focused on **intelligent console forwarding** with professional monitoring and security features.
 
-[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)](https://github.com/yourusername/ConsoleDiscord)
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
-[![Paper](https://img.shields.io/badge/Paper-1.21--1.21.11-green.svg)](https://papermc.io/)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
+[![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
+[![Paper](https://img.shields.io/badge/Paper-26.1.2-green.svg)](https://papermc.io/)
+
+> **Branch Info:** This is the `mc-26` branch for Minecraft 26.x (Java 25).
+> For Minecraft 1.21 - 1.21.11 (Java 21), see the [`main` branch](https://github.com/BoondockSulfur/ConsoleDiscord/tree/main).
 
 ---
 
@@ -350,8 +353,8 @@ Status: 🟡 Warning
 
 ## 🚀 Requirements
 
-- **Java 21** or higher
-- **Paper/Spigot/Folia 1.21 - 1.21.11**
+- **Java 25** or higher
+- **Paper/Spigot/Folia 26.1.2** or higher
 - **Discord Bot** with Message Content Intent
 
 ### ✨ Folia Support

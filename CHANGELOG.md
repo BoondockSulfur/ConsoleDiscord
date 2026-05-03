@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.0.0] - 2026-05-03 — Minecraft 26 Edition
+
+Port of v1.4.1 to Minecraft 26.x with Java 25. Functionally identical to v1.4.1.
+
+- Java 25 target (was Java 21)
+- Paper API 26.1.2 (was 1.21.4)
+- api-version: 26.1 (was 1.21)
+
+**Build:** Java 25 | Paper 26.1.2 | JDA 6.1.0 | Folia supported
+
+---
+
 ## [1.4.1] - 2026-05-03 — Bugfix & Quality Release
 
 ### Bugfixes
