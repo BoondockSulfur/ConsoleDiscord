@@ -13,6 +13,7 @@ Port of v1.4.1 to Minecraft 26.x with Java 25. Functionally identical to v1.4.1.
 - Java 25 target (was Java 21)
 - Paper API 26.1.2 (was 1.21.4)
 - api-version: 26.1 (was 1.21)
+- bStats metrics integration
 
 **Build:** Java 25 | Paper 26.1.2 | JDA 6.1.0 | Folia supported
 
@@ -41,6 +42,7 @@ Port of v1.4.1 to Minecraft 26.x with Java 25. Functionally identical to v1.4.1.
 - Update checker filters by Minecraft version via Modrinth API
 - Language files auto-merge new keys (like `config.yml` already did)
 - Deprecated API calls replaced (`URL` constructor, Reflection for TPS)
+- bStats metrics integration
 
 **Build:** Java 21 | Paper 1.21 - 1.21.11 | JDA 6.1.0 | Folia supported
 **Migration:** Drop-in replacement — just swap the JAR.
