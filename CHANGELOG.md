@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Update checker filters by Minecraft version via Modrinth API
 - Language files auto-merge new keys (like `config.yml` already did)
 - Deprecated API calls replaced (`URL` constructor, Reflection for TPS)
+- bStats metrics integration for anonymous usage statistics
 
 **Build:** Java 21 | Paper 1.21 - 1.21.11 | JDA 6.1.0 | Folia supported
 **Migration:** Drop-in replacement — just swap the JAR.

@@ -65,6 +65,13 @@
             <version>2.11.0</version>
             <scope>provided</scope>
         </dependency>
+
+        <!-- bStats Metrics -->
+        <dependency>
+            <groupId>org.bstats</groupId>
+            <artifactId>bstats-bukkit</artifactId>
+            <version>3.2.1</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -97,6 +104,10 @@
                                 <relocation>
                                     <pattern>net.dv8tion</pattern>
                                     <shadedPattern>dev.boondocksulfur.consolediscord.libs.jda</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.bstats</pattern>
+                                    <shadedPattern>dev.boondocksulfur.consolediscord.libs.bstats</shadedPattern>
                                 </relocation>
                             </relocations>
                         </configuration>

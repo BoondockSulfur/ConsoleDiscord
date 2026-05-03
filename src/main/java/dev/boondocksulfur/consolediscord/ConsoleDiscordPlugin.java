@@ -1,6 +1,7 @@
 package dev.boondocksulfur.consolediscord;
 
 import dev.boondocksulfur.consolediscord.audit.AuditLogger;
+import org.bstats.bukkit.Metrics;
 import dev.boondocksulfur.consolediscord.cleanup.MessageCleanup;
 import dev.boondocksulfur.consolediscord.i18n.Messages;
 import dev.boondocksulfur.consolediscord.listener.DiscordListener;
@@ -114,6 +115,10 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         saveDefaultConfig();
         mergeDefaultConfig();
         getLogger().info("ConsoleDiscordPlugin starting...");
+
+        // bStats Metrics
+        new Metrics(this, 31074);
+
         reloadPlugin();
 
         if (messages != null) {
