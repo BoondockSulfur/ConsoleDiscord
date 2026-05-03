@@ -1,0 +1,136 @@
+bot-token: "YOUR_DISCORD_BOT_TOKEN"
+
+# Text channel for server logs
+log-channel-id: "123456789012345678"
+
+# Optional: Channel where /mc or !mc is allowed
+command-channel-id: ""
+
+# Who can use /mc and !mc (user IDs). If empty, everyone is allowed.
+allowed-user-ids: []
+#  - "123456789012345678"
+
+# How often logs are sent to Discord (20 ticks = 1 second)
+log-flush-ticks: 40
+
+# Debug output of JDA status changes in server log
+debug-status-logging: false
+
+# Language for plugin messages (en = English, de = German)
+language: "en"
+
+# Maximum number of commands per minute (rate limiting)
+max-commands-per-minute: 5
+
+# ===== ADVANCED LOGGING OPTIONS =====
+
+# Log level filtering - Which log levels should be sent to Discord?
+# Possible values: TRACE, DEBUG, INFO, WARN, ERROR, FATAL
+log-levels:
+  - INFO
+  - WARN
+  - ERROR
+  - FATAL
+
+# Log formatting
+log-formatting:
+  # Use Discord embeds (prettier) instead of code blocks
+  use-embeds: true
+  # Show emojis for log levels
+  use-emojis: true
+  # Batch size for embeds (how many log lines per embed)
+  embed-batch-size: 10
+
+# Regex filters - Logs matching these patterns will NOT be sent
+log-filters:
+  ignore-patterns:
+    - "Can't keep up! Is the server overloaded\\?"
+    - ".*UUID of player.*already taken.*"
+    # Add more patterns here...
+
+# Log categories - Different channels for different log types
+log-categories:
+  enabled: false
+  # Format: category-name: "channel-id"
+  categories:
+    security: ""  # Channel ID for security logs (op, ban, kick, etc.)
+    performance: ""  # Channel ID for performance logs (TPS, Memory)
+    # Add more categories here...
+  # Patterns for each category
+  patterns:
+    security:
+      - ".*Banned player.*"
+      - ".*UUID mismatch.*"
+      - ".*issued server command.*op.*"
+      - ".*issued server command.*deop.*"
+    performance:
+      - ".*Can't keep up.*"
+      - ".*Server tick.*"
+      - ".*Memory.*"
+
+# ===== COMMAND FEATURES =====
+
+# Command security - Prevents execution of dangerous commands
+command-security:
+  # Enable security system
+  enabled: true
+  # Commands that should be blocked (list is customizable)
+  # Default recommendation: block op and deop
+  # You can add more like: stop, restart, whitelist, ban-ip, reload, etc.
+  blocked-commands:
+    - "op"
+    - "deop"
+  # Note: Namespace prefixes (minecraft:, bukkit:, spigot:, paper:) are ALWAYS blocked
+
+# Command aliases - Shortcuts for frequent commands
+command-aliases:
+  enabled: true
+  aliases:
+    tps: "spark tps"
+    lag: "spark profiler start"
+    save: "save-all"
+    # Add more aliases here...
+
+# Command audit log - Logs all executed Discord commands
+command-audit:
+  enabled: true
+  # Path to audit log file (relative to plugin folder)
+  log-file: "audit.log"
+  # Also log to Discord channel?
+  log-to-discord: false
+  # Discord channel for audit logs
+  audit-channel-id: ""
+
+# ===== PERFORMANCE ALERTS =====
+
+performance-alerts:
+  enabled: true
+  # TPS warning (warning when TPS below this value)
+  low-tps-threshold: 15.0
+  # Memory warning (warning when memory usage above this percentage)
+  high-memory-threshold: 90
+  # Cooldown between alerts in seconds (prevents spam)
+  alert-cooldown: 300
+
+# ===== STARTUP/SHUTDOWN NOTIFICATIONS =====
+
+notifications:
+  # Server start notification
+  startup: true
+  # Server stop notification
+  shutdown: true
+
+# ===== AUTO-CLEANUP =====
+
+auto-cleanup:
+  enabled: false
+  # Messages older than X days will be deleted
+  cleanup-after-days: 7
+  # Cleanup check interval in hours
+  check-interval-hours: 24
+
+# ===== UPDATE CHECKER =====
+
+update-checker:
+  # Check for updates on startup (via Modrinth API)
+  enabled: true

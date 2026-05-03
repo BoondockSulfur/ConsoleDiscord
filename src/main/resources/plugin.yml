@@ -1,0 +1,22 @@
+name: ConsoleDiscord
+main: dev.boondocksulfur.consolediscord.ConsoleDiscordPlugin
+version: 1.4.1
+api-version: '1.21'
+folia-supported: true
+authors: [ "BoondockSulfur" ]
+load: POSTWORLD
+description: Advanced Discord integration with log forwarding, remote commands, performance monitoring, and Folia support
+
+commands:
+  cdr:
+    description: Management commands for ConsoleDiscord
+    usage: "/cdr reload | /cdr debug [on|off|status]"
+    aliases: ["consolediscord"]
+
+permissions:
+  consolediscord.reload:
+    description: Allows reloading the plugin
+    default: op
+  consolediscord.debug:
+    description: Allows toggling debug logging
+    default: op

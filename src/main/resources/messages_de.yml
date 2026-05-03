@@ -1,0 +1,94 @@
+# Deutsche Nachrichten für ConsoleDiscord
+
+# Plugin Start/Stop
+plugin.enabled: "ConsoleDiscord erfolgreich gestartet."
+plugin.disabled: "ConsoleDiscord erfolgreich heruntergefahren."
+plugin.reloading: "ConsoleDiscord wird neu geladen..."
+plugin.reloaded: "ConsoleDiscord erfolgreich neu geladen."
+
+# Discord-Verbindung
+discord.no_token: "Kein gültiger bot-token in config.yml gesetzt! Discord-Integration wird nicht gestartet."
+discord.invalid_token_format: "Bot-Token hat ein ungültiges Format! Bitte überprüfe deinen Token."
+discord.startup_error: "Konnte JDA nicht starten: {error}"
+discord.shutdown_warning: "JDA-Shutdown dauerte zu lange, erzwinge shutdownNow()."
+discord.shutdown_interrupted: "Shutdown wurde unterbrochen."
+discord.slash_registered: "Slash-Command /mc bei Discord registriert."
+discord.slash_failed: "Konnte Slash-Command /mc nicht registrieren: {error}"
+discord.reconnecting: "Nicht verbunden seit {seconds}s (Status={status}). Starte JDA neu..."
+
+# Befehle
+command.usage: "Benutzung: {usage}"
+command.usage_cdr: "/cdr reload oder /cdr debug [on|off|status]"
+command.no_permission: "Du hast keine Berechtigung für diesen Befehl."
+command.reload_success: "ConsoleDiscord neu geladen."
+command.debug_status: "ConsoleDiscord Debug-Status: {status}"
+command.debug_on: "AN"
+command.debug_off: "AUS"
+command.unknown_subcommand: "Unbekannter Unterbefehl. Benutzung: /cdr reload oder /cdr debug [on|off|status]"
+
+# Discord-Befehle
+discord_command.wrong_channel: "Du darfst hier keine MC-Befehle ausführen."
+discord_command.no_permission: "Du hast keine Berechtigung dafür."
+discord_command.executing: "Befehl wird ausgeführt: `{command}`"
+discord_command.failed: "Konnte Befehl nicht ausführen: `{command}`"
+discord_command.blocked: "⛔ Befehl `{command}` ist aus Sicherheitsgründen blockiert."
+discord_command.rate_limited: "⏱️ Rate-Limit überschritten! Bitte warte {seconds}s, bevor du es erneut versuchst. ({current}/{max} Befehle verwendet)"
+discord_command.empty: "Bitte gib einen Minecraft-Befehl an."
+
+# Logging
+log.no_permission: "Keine Rechte im Log-Channel. Stoppe Log-Task."
+log.send_failed: "Senden der Log-Nachricht fehlgeschlagen."
+log.appender_register_failed: "Konnte DiscordLogAppender nicht registrieren."
+log.appender_remove_failed: "Fehler beim Entfernen des LogAppenders."
+
+# Config-Validierung
+config.invalid_log_channel: "Ungültige log-channel-id: {id} - Kanal nicht gefunden!"
+config.invalid_command_channel: "Ungültige command-channel-id: {id} - Kanal nicht gefunden!"
+config.validation_passed: "Konfiguration erfolgreich validiert."
+config.validation_failed: "Konfigurationsvalidierung fehlgeschlagen. Bitte überprüfe deine config.yml"
+
+# Watchdog
+watchdog.error: "Watchdog-Fehler."
+
+# Status
+status.on: "AN"
+status.off: "AUS"
+
+# Security
+security.commands_blocked: "{count} Befehle blockiert: {commands}"
+security.no_commands_blocked: "Keine Befehle blockiert - alle Commands erlaubt."
+security.disabled: "⚠️ Command-Sicherheit ist DEAKTIVIERT! Alle Befehle sind erlaubt."
+security.alias_blocked: "⚠️ Alias '{alias}' zeigt auf blockierten Befehl '{command}' und wurde nicht geladen."
+
+# Benachrichtigungen
+notification.startup_title: "🟢 Server gestartet"
+notification.startup_description: "Der Minecraft-Server wurde erfolgreich gestartet!"
+notification.shutdown_title: "🔴 Server stoppt"
+notification.shutdown_description: "Der Minecraft-Server wird heruntergefahren."
+notification.version: "Version"
+notification.plugins: "Plugins"
+notification.uptime: "Laufzeit"
+notification.update_title: "🔔 ConsoleDiscord Update verfügbar"
+notification.update_description: "Eine neue Version von ConsoleDiscord ist verfügbar!"
+notification.current_version: "Aktuelle Version"
+notification.latest_version: "Neueste Version"
+notification.download: "Download"
+notification.download_link: "Hier klicken zum Herunterladen"
+notification.update_footer: "Update über Modrinth"
+
+# Performance-Warnungen
+performance.tps_title: "⚠️ Niedrige TPS-Warnung"
+performance.tps_description: "Server-TPS sind unter den Schwellenwert gefallen!"
+performance.tps_current: "Aktuelle TPS"
+performance.tps_threshold: "Schwellenwert"
+performance.tps_status: "Status"
+performance.tps_critical: "🔴 Kritisch"
+performance.tps_warning: "🟡 Warnung"
+performance.memory_title: "⚠️ Hohe Speicherauslastung"
+performance.memory_description: "Speicherauslastung hat den Schwellenwert überschritten!"
+performance.memory_usage: "Speicherverbrauch"
+performance.memory_threshold: "Schwellenwert"
+performance.memory_status: "Status"
+performance.memory_critical: "🔴 Kritisch"
+performance.memory_warning: "🟡 Warnung"
+performance.footer: "Performance-Monitor"

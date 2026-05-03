@@ -1,0 +1,94 @@
+# English Messages for ConsoleDiscord
+
+# Plugin startup/shutdown
+plugin.enabled: "ConsoleDiscord started successfully."
+plugin.disabled: "ConsoleDiscord shut down successfully."
+plugin.reloading: "Reloading ConsoleDiscord..."
+plugin.reloaded: "ConsoleDiscord reloaded successfully."
+
+# Discord connection
+discord.no_token: "No valid bot-token set in config.yml! Discord integration will not start."
+discord.invalid_token_format: "Bot token has an invalid format! Please check your token."
+discord.startup_error: "Could not start JDA: {error}"
+discord.shutdown_warning: "JDA shutdown took too long, forcing shutdownNow()."
+discord.shutdown_interrupted: "Shutdown was interrupted."
+discord.slash_registered: "Slash command /mc registered with Discord."
+discord.slash_failed: "Could not register slash command /mc: {error}"
+discord.reconnecting: "Not connected for {seconds}s (Status={status}). Restarting JDA..."
+
+# Commands
+command.usage: "Usage: {usage}"
+command.usage_cdr: "/cdr reload or /cdr debug [on|off|status]"
+command.no_permission: "You don't have permission to use this command."
+command.reload_success: "ConsoleDiscord reloaded."
+command.debug_status: "ConsoleDiscord Debug Status: {status}"
+command.debug_on: "ON"
+command.debug_off: "OFF"
+command.unknown_subcommand: "Unknown subcommand. Usage: /cdr reload or /cdr debug [on|off|status]"
+
+# Discord commands
+discord_command.wrong_channel: "You cannot execute MC commands here."
+discord_command.no_permission: "You don't have permission to do that."
+discord_command.executing: "Executing command: `{command}`"
+discord_command.failed: "Could not execute command: `{command}`"
+discord_command.blocked: "⛔ Command `{command}` is blocked for security reasons."
+discord_command.rate_limited: "⏱️ Rate limit exceeded! Please wait {seconds}s before trying again. ({current}/{max} commands used)"
+discord_command.empty: "Please specify a Minecraft command."
+
+# Logging
+log.no_permission: "No permissions in log channel. Stopping log task."
+log.send_failed: "Failed to send log message."
+log.appender_register_failed: "Could not register DiscordLogAppender."
+log.appender_remove_failed: "Error removing LogAppender."
+
+# Config validation
+config.invalid_log_channel: "Invalid log-channel-id: {id} - channel not found!"
+config.invalid_command_channel: "Invalid command-channel-id: {id} - channel not found!"
+config.validation_passed: "Configuration validated successfully."
+config.validation_failed: "Configuration validation failed. Please check your config.yml"
+
+# Watchdog
+watchdog.error: "Watchdog error."
+
+# Status
+status.on: "ON"
+status.off: "OFF"
+
+# Security
+security.commands_blocked: "{count} commands blocked: {commands}"
+security.no_commands_blocked: "No commands blocked - all commands allowed."
+security.disabled: "⚠️ Command security is DISABLED! All commands are allowed."
+security.alias_blocked: "⚠️ Alias '{alias}' points to blocked command '{command}' and was not loaded."
+
+# Notifications
+notification.startup_title: "🟢 Server Started"
+notification.startup_description: "The Minecraft server has started successfully!"
+notification.shutdown_title: "🔴 Server Stopping"
+notification.shutdown_description: "The Minecraft server is shutting down."
+notification.version: "Version"
+notification.plugins: "Plugins"
+notification.uptime: "Uptime"
+notification.update_title: "🔔 ConsoleDiscord Update Available"
+notification.update_description: "A new version of ConsoleDiscord is available!"
+notification.current_version: "Current Version"
+notification.latest_version: "Latest Version"
+notification.download: "Download"
+notification.download_link: "Click here to download"
+notification.update_footer: "Update via Modrinth"
+
+# Performance Alerts
+performance.tps_title: "⚠️ Low TPS Alert"
+performance.tps_description: "Server TPS has dropped below threshold!"
+performance.tps_current: "Current TPS"
+performance.tps_threshold: "Threshold"
+performance.tps_status: "Status"
+performance.tps_critical: "🔴 Critical"
+performance.tps_warning: "🟡 Warning"
+performance.memory_title: "⚠️ High Memory Usage Alert"
+performance.memory_description: "Server memory usage has exceeded threshold!"
+performance.memory_usage: "Memory Usage"
+performance.memory_threshold: "Threshold"
+performance.memory_status: "Status"
+performance.memory_critical: "🔴 Critical"
+performance.memory_warning: "🟡 Warning"
+performance.footer: "Performance Monitor"
