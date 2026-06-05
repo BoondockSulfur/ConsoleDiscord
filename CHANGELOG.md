@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.0.1] - 2026-06-05 — Bugfix, Tests & Setup Guide
+
+Backport of the v1.4.2 fixes to the Minecraft 26.x / Java 25 line.
+
+### Bugfixes
+- Fixed Discord showing "command failed" for vanilla commands that actually ran — `Bukkit.dispatchCommand()`'s unreliable return value is no longer treated as success/failure; only a thrown exception counts as a failure. The audit log now records the real execution status.
+- Fixed the `RateLimiter` memory leak for good — removed the self-defeating empty-entry churn (entries were removed and immediately re-added) and added a periodic `purgeExpired()` that runs automatically every 100 commands, keeping the tracking map bounded on busy public servers.
+- Fixed `HttpURLConnection` not being released in `ModrinthUpdateChecker` — `disconnect()` is now called in a `finally` block.
+
+### Improvements
+- The plugin no longer forwards its own log messages to Discord, preventing echo/feedback noise (e.g. repeated send-error warnings looping back into the log channel).
+- Added a JUnit 5 test suite (21 tests) covering `CommandSecurity`, `RateLimiter` and the update-checker version comparison; tests run on every build via Surefire.
+- Added a bundled `SETUP.md` guide (installation + step-by-step Discord bot creation), automatically exported next to `config.yml` on first start.
+
+**Build:** Java 25 | Paper 26.1.2 | JDA 6.1.0 | Folia supported
+**Migration:** Drop-in replacement — just swap the JAR.
+
+---
+
 ## [2.0.0] - 2026-05-03 — Minecraft 26 Edition
 
 Port of v1.4.1 to Minecraft 26.x with Java 25. Functionally identical to v1.4.1.

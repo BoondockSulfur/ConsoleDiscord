@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Rate limiter to prevent command spam from Discord users.
@@ -12,9 +13,17 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public class RateLimiter {
 
+    /**
+     * How many {@link #allowCommand(String)} calls to serve between automatic
+     * purges of stale, idle-user entries. Keeps the backing map bounded on busy
+     * public servers without needing an external scheduler.
+     */
+    private static final int PURGE_INTERVAL = 100;
+
     private final int maxCommands;
     private final long windowSeconds;
     private final Map<String, Queue<Instant>> userCommands = new ConcurrentHashMap<>();
+    private final AtomicInteger callsSincePurge = new AtomicInteger(0);
 
     /**
      * Creates a new rate limiter.
@@ -34,18 +43,19 @@ public class RateLimiter {
      * @return true if the command is allowed, false if rate limited
      */
     public boolean allowCommand(String userId) {
+        // Periodically drop entries for users who have gone idle so the map
+        // stays bounded on public servers with many distinct command users.
+        if (callsSincePurge.incrementAndGet() >= PURGE_INTERVAL) {
+            callsSincePurge.set(0);
+            purgeExpired();
+        }
+
         Instant now = Instant.now();
         Queue<Instant> timestamps = userCommands.computeIfAbsent(userId, k -> new ConcurrentLinkedQueue<>());
 
         // Remove old timestamps outside the window
         Instant windowStart = now.minusSeconds(windowSeconds);
         timestamps.removeIf(timestamp -> timestamp.isBefore(windowStart));
-
-        // Remove empty entries to prevent unbounded map growth
-        if (timestamps.isEmpty()) {
-            userCommands.remove(userId, timestamps);
-            timestamps = userCommands.computeIfAbsent(userId, k -> new ConcurrentLinkedQueue<>());
-        }
 
         // Check if user has exceeded the limit
         if (timestamps.size() >= maxCommands) {
@@ -55,6 +65,20 @@ public class RateLimiter {
         // Add current timestamp
         timestamps.offer(now);
         return true;
+    }
+
+    /**
+     * Removes tracking data for users whose command timestamps have all expired.
+     * Called automatically every {@link #PURGE_INTERVAL} commands to prevent
+     * unbounded growth of the backing map; safe to call manually as well.
+     */
+    public void purgeExpired() {
+        Instant windowStart = Instant.now().minusSeconds(windowSeconds);
+        userCommands.entrySet().removeIf(entry -> {
+            Queue<Instant> timestamps = entry.getValue();
+            timestamps.removeIf(timestamp -> timestamp.isBefore(windowStart));
+            return timestamps.isEmpty();
+        });
     }
 
     /**

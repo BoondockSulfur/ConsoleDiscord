@@ -308,14 +308,17 @@ public class DiscordListener extends ListenerAdapter {
         ConsoleCommandSender console = Bukkit.getServer().getConsoleSender();
 
         SchedulerAdapter.runGlobal(plugin, () -> {
-            boolean success = false;
+            boolean executed = false;
             try {
-                success = Bukkit.dispatchCommand(console, command);
+                // Bukkit.dispatchCommand() returns false for many vanilla commands
+                // that actually executed successfully (e.g. "time set day"), so its
+                // return value is not a reliable success indicator. We treat "no
+                // exception thrown" as executed; the real command output is forwarded
+                // to Discord via the console log appender anyway.
+                Bukkit.dispatchCommand(console, command);
+                executed = true;
 
-                String msg = success
-                        ? plugin.getMessages().get("discord_command.executing", "command", command)
-                        : plugin.getMessages().get("discord_command.failed", "command", command);
-
+                String msg = plugin.getMessages().get("discord_command.executing", "command", command);
                 sendResponse(slash, slashEvent, channel, msg);
 
             } catch (Exception ex) {
@@ -325,7 +328,7 @@ public class DiscordListener extends ListenerAdapter {
             } finally {
                 // Log to audit
                 if (plugin.getAuditLogger() != null) {
-                    plugin.getAuditLogger().logCommand(userId, username, command, success);
+                    plugin.getAuditLogger().logCommand(userId, username, command, executed);
                 }
             }
         });

@@ -37,31 +37,43 @@ public class DiscordLogAppender extends AbstractAppender {
     private final AtomicInteger queueCount = new AtomicInteger(0);
 
     /**
+     * Log4j logger name to exclude from forwarding (the plugin's own logger),
+     * preventing the plugin from echoing its own messages — and any send-error
+     * warnings — back into Discord. May be {@code null} to exclude nothing.
+     */
+    private final String excludedLoggerName;
+
+    /**
      * Creates a new Discord log appender.
      *
      * @param name The name of the appender
      * @param filter Optional filter for log events
      * @param layout Layout for formatting log messages
      * @param ignoreExceptions Whether to ignore exceptions during logging
+     * @param excludedLoggerName Logger name to skip, or null to forward everything
      */
     protected DiscordLogAppender(String name,
                                  Filter filter,
                                  Layout<? extends Serializable> layout,
-                                 boolean ignoreExceptions) {
+                                 boolean ignoreExceptions,
+                                 String excludedLoggerName) {
         super(name, filter, layout, ignoreExceptions, Property.EMPTY_ARRAY);
+        this.excludedLoggerName = excludedLoggerName;
     }
 
     /**
      * Factory method to create a new Discord log appender with default settings.
      *
      * @param name The name of the appender
+     * @param excludedLoggerName Logger name to skip (e.g. the plugin's own name),
+     *                           or null to forward all loggers
      * @return A new DiscordLogAppender instance
      */
-    public static DiscordLogAppender create(String name) {
+    public static DiscordLogAppender create(String name, String excludedLoggerName) {
         PatternLayout layout = PatternLayout.newBuilder()
                 .withPattern("%d{HH:mm:ss} [%t/%p]: %msg%n")
                 .build();
-        return new DiscordLogAppender(name, null, layout, true);
+        return new DiscordLogAppender(name, null, layout, true, excludedLoggerName);
     }
 
     /**
@@ -72,6 +84,11 @@ public class DiscordLogAppender extends AbstractAppender {
      */
     @Override
     public void append(LogEvent event) {
+        // Skip the plugin's own log messages to avoid echo/feedback noise.
+        if (excludedLoggerName != null && excludedLoggerName.equals(event.getLoggerName())) {
+            return;
+        }
+
         Layout<? extends Serializable> layout = getLayout();
         if (layout == null) {
             return;

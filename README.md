@@ -2,7 +2,7 @@
 
 A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Minecraft server. Focused on **intelligent console forwarding** with professional monitoring and security features.
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
+[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
 [![Paper](https://img.shields.io/badge/Paper-26.1.2-green.svg)](https://papermc.io/)
 
@@ -367,7 +367,24 @@ This plugin is **fully compatible with Folia**! It automatically detects whether
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### Version 1.4.1 (Current) - Bugfix & Quality Release
+### Version 2.0.1 (Current) - Bugfix, Tests & Setup Guide
+
+**New in 2.0.1** (backport of the v1.4.2 fixes to the MC 26.x / Java 25 line):
+- 🐛 Fixed false "command failed" replies in Discord for vanilla commands that actually executed
+- 🐛 Fixed the RateLimiter memory leak properly (periodic auto-purge of idle users)
+- 🐛 Fixed an unreleased HTTP connection in the update checker
+- 🔇 Plugin no longer forwards its own log messages to Discord (no echo/feedback noise)
+- ✅ Added a JUnit 5 test suite (21 tests) run on every build
+- 📖 New bundled `SETUP.md` guide (install + Discord bot creation), auto-exported on first start
+
+### Version 2.0.0 - Minecraft 26 Edition
+
+**New in 2.0.0:**
+- ✨ Port to Minecraft 26.x / Java 25 (Paper API 26.1.2, api-version 26.1)
+- 📊 bStats metrics integration
+- Functionally identical to v1.4.1
+
+### Version 1.4.1 - Bugfix & Quality Release
 
 **New in 1.4.1:**
 - 🐛 Fixed NullPointerException when audit logging is disabled
