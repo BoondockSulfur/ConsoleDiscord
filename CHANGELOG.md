@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.2] - 2026-06-05 — Bugfix, Tests & Setup Guide
+
+### Bugfixes
+- Fixed Discord showing "command failed" for vanilla commands that actually ran — `Bukkit.dispatchCommand()`'s unreliable return value is no longer treated as success/failure; only a thrown exception counts as a failure. The audit log now records the real execution status.
+- Fixed the `RateLimiter` memory leak for good — removed the self-defeating empty-entry churn (entries were removed and immediately re-added) and added a periodic `purgeExpired()` that runs automatically every 100 commands, keeping the tracking map bounded on busy public servers.
+- Fixed `HttpURLConnection` not being released in `ModrinthUpdateChecker` — `disconnect()` is now called in a `finally` block.
+
+### Improvements
+- The plugin no longer forwards its own log messages to Discord, preventing echo/feedback noise (e.g. repeated send-error warnings looping back into the log channel).
+- Added a JUnit 5 test suite (21 tests) covering `CommandSecurity`, `RateLimiter` and the update-checker version comparison; tests run on every build via Surefire.
+- Added a bundled `SETUP.md` guide (installation + step-by-step Discord bot creation), automatically exported next to `config.yml` on first start.
+- bStats metrics integration for anonymous usage statistics (moved here — the commit landed after the 1.4.1 release).
+- Aligned `@version` JavaDoc tags across classes and corrected placeholder GitHub links in the README.
+
+**Build:** Java 21 | Paper 1.21 - 1.21.11 | JDA 6.1.0 | Folia supported
+**Migration:** Drop-in replacement — just swap the JAR.
+
+---
+
 ## [1.4.1] - 2026-05-03 — Bugfix & Quality Release
 
 ### Bugfixes
@@ -29,7 +48,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Update checker filters by Minecraft version via Modrinth API
 - Language files auto-merge new keys (like `config.yml` already did)
 - Deprecated API calls replaced (`URL` constructor, Reflection for TPS)
-- bStats metrics integration for anonymous usage statistics
 
 **Build:** Java 21 | Paper 1.21 - 1.21.11 | JDA 6.1.0 | Folia supported
 **Migration:** Drop-in replacement — just swap the JAR.
@@ -417,7 +435,8 @@ Features planned for future versions:
 
 | Version | Release Date | Main Features | Status |
 |---------|--------------|---------------|--------|
-| **1.4.1** | 2026-05-03 | 10 Bugfixes, i18n, Version-aware updates | ✅ Current |
+| **1.4.2** | 2026-06-05 | dispatchCommand/RateLimiter fixes, test suite, bundled setup guide | ✅ Current |
+| 1.4.1 | 2026-05-03 | 10 Bugfixes, i18n, Version-aware updates | ✅ Stable |
 | 1.4.0 | 2026-04-10 | Folia support, Embed fix, Config auto-merge, Update checker, 6 Bugfixes | ✅ Stable |
 | 1.3.0 | 2026-03-10 | 13 new features (Embeds, Alerts, Security, etc.) | ✅ Stable |
 | 1.2.0 | 2025-01-22 | Slash command fix | ✅ Stable |

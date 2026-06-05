@@ -41,6 +41,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 
+import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import org.jetbrains.annotations.NotNull;
@@ -55,7 +56,7 @@ import java.util.*;
  * Integrates Discord with a Minecraft server, allowing log forwarding and remote command execution.
  *
  * @author BoondockSulfur
- * @version 1.4.0
+ * @version 1.4.2
  */
 public class ConsoleDiscordPlugin extends JavaPlugin {
 
@@ -114,6 +115,7 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         serverStartTime = System.currentTimeMillis();
         saveDefaultConfig();
         mergeDefaultConfig();
+        saveSetupGuide();
         getLogger().info("ConsoleDiscordPlugin starting...");
 
         // bStats Metrics
@@ -164,6 +166,23 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
             }
         } catch (Exception e) {
             getLogger().warning("Could not merge default config: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Copies the bundled SETUP.md guide into the plugin data folder on first run,
+     * so server admins find the setup instructions right next to the config.
+     * Existing files are never overwritten (admins may have added their own notes).
+     */
+    private void saveSetupGuide() {
+        File guide = new File(getDataFolder(), "SETUP.md");
+        if (guide.exists()) {
+            return;
+        }
+        try {
+            saveResource("SETUP.md", false);
+        } catch (Exception e) {
+            getLogger().warning("Could not write SETUP.md: " + e.getMessage());
         }
     }
 
@@ -886,7 +905,7 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
             Configuration config = ctx.getConfiguration();
             LoggerConfig rootLoggerConfig = config.getRootLogger();
 
-            DiscordLogAppender discordAppender = DiscordLogAppender.create("ConsoleDiscordAppender");
+            DiscordLogAppender discordAppender = DiscordLogAppender.create("ConsoleDiscordAppender", getName());
             discordAppender.start();
 
             rootLoggerConfig.addAppender(discordAppender, org.apache.logging.log4j.Level.INFO, null);

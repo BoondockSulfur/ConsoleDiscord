@@ -2,7 +2,7 @@
 
 A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Minecraft server. Focused on **intelligent console forwarding** with professional monitoring and security features.
 
-[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)](https://github.com/yourusername/ConsoleDiscord)
+[![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
 [![Paper](https://img.shields.io/badge/Paper-1.21--1.21.11-green.svg)](https://papermc.io/)
 
@@ -364,7 +364,19 @@ This plugin is **fully compatible with Folia**! It automatically detects whether
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### Version 1.4.1 (Current) - Bugfix & Quality Release
+### Version 1.4.2 (Current) - Bugfix, Tests & Setup Guide
+
+**New in 1.4.2:**
+- 🐛 Fixed false "command failed" replies in Discord for vanilla commands that actually executed
+- 🐛 Fixed the RateLimiter memory leak properly (periodic auto-purge of idle users)
+- 🐛 Fixed an unreleased HTTP connection in the update checker
+- 🔇 Plugin no longer forwards its own log messages to Discord (no echo/feedback noise)
+- ✅ Added a JUnit 5 test suite (21 tests) run on every build
+- 📖 New bundled `SETUP.md` guide (install + Discord bot creation), auto-exported on first start
+- 📊 bStats metrics integration for anonymous usage statistics
+- 🔧 Aligned `@version` JavaDoc tags and corrected README placeholder links
+
+### Version 1.4.1 - Bugfix & Quality Release
 
 **New in 1.4.1:**
 - 🐛 Fixed NullPointerException when audit logging is disabled
@@ -413,13 +425,13 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/ConsoleDiscord.git
+git clone https://github.com/BoondockSulfur/ConsoleDiscord.git
 cd ConsoleDiscord
 
 # Build with Maven
 mvn clean package
 
-# JAR is located in: target/consolediscord-1.4.1.jar
+# JAR is located in: target/consolediscord-1.4.2.jar
 ```
 
 **Or with IntelliJ IDEA:**

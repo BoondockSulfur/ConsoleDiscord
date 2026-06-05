@@ -6,7 +6,7 @@
 
     <groupId>dev.boondocksulfur</groupId>
     <artifactId>consolediscord</artifactId>
-    <version>1.4.1</version>
+    <version>1.4.2</version>
     <packaging>jar</packaging>
     <name>ConsoleDiscord</name>
     <description>Advanced Discord integration with log forwarding, remote commands, performance monitoring, and Folia support</description>
@@ -72,6 +72,14 @@
             <artifactId>bstats-bukkit</artifactId>
             <version>3.2.1</version>
         </dependency>
+
+        <!-- JUnit 5 für Unit-Tests -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -85,6 +93,13 @@
                     <source>21</source>
                     <target>21</target>
                 </configuration>
+            </plugin>
+
+            <!-- Surefire führt die JUnit-5-Tests beim Build aus -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
 
             <!-- JDA ins Plugin reinshaden -->

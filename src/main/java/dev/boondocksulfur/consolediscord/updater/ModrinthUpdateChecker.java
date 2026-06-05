@@ -23,7 +23,7 @@ import java.util.logging.Level;
  * between incompatible builds (e.g. Java 21 vs Java 25).
  *
  * @author BoondockSulfur
- * @version 1.4.1
+ * @version 1.4.2
  */
 public class ModrinthUpdateChecker {
 
@@ -58,6 +58,7 @@ public class ModrinthUpdateChecker {
      * @return true if an update is available, false otherwise
      */
     public boolean checkForUpdates() {
+        HttpURLConnection connection = null;
         try {
             // Filter by game version to avoid cross-version notifications
             String gameVersionFilter = URLEncoder.encode(
@@ -65,7 +66,7 @@ public class ModrinthUpdateChecker {
             String apiUrl = MODRINTH_API + "?game_versions=" + gameVersionFilter;
 
             URL url = URI.create(apiUrl).toURL();
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("GET");
             connection.setRequestProperty("User-Agent", "ConsoleDiscord/" + currentVersion);
             connection.setConnectTimeout(5000);
@@ -113,6 +114,10 @@ public class ModrinthUpdateChecker {
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Failed to check for updates", e);
             return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -124,7 +129,7 @@ public class ModrinthUpdateChecker {
      * @param current The current version string
      * @return true if latest is newer than current
      */
-    private boolean isNewerVersion(String latest, String current) {
+    static boolean isNewerVersion(String latest, String current) {
         try {
             String[] latestParts = latest.split("\\.");
             String[] currentParts = current.split("\\.");
