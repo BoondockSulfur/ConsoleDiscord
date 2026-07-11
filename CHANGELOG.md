@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.0] - 2026-07-10 — Security, Stability & Feature Release
+
+Full security and code review of the plugin (fixes three attack vectors, five functional bugs and a packaging issue) plus a set of new quality-of-life features.
+
+### ⚠️ Breaking Change
+- **Empty whitelists now mean deny-all.** Previously an empty `allowed-user-ids` list allowed *every* Discord user in *every* server the bot was in to run console commands — with only `op`/`deop` blocked, anyone could run `stop`, `ban`, `whitelist add`, etc. Commands are now disabled until at least one Discord user ID (or role ID, see below) is whitelisted; a clear warning is logged on startup. **Migration:** add your Discord user ID to `allowed-user-ids` in `config.yml`.
+
+### New Features
+- **Command output replies:** `/mc` and `!mc` now reply with the actual command output (captured via Paper's feedback sender) instead of a generic "executing" note — e.g. `/mc list` shows the real player list in Discord. Configurable via `command-feedback` (enabled + collect window).
+- **Role-based whitelist:** `allowed-role-ids` allows everyone holding one of the configured Discord roles to run commands — easier to manage for teams than individual user IDs.
+- **`/cdr status`:** shows plugin version, server type, Discord connection state, configured channels (validated live), pending log queue size, whitelist counts and available updates.
+- **`/cdr cleanup`:** manually triggers the message cleanup (the existing `cleanupNow()` logic was previously unreachable).
+- **Tab completion** for all `/cdr` subcommands, filtered by permission.
+- **Token via environment:** the bot token can be provided through the `CONSOLEDISCORD_BOT_TOKEN` environment variable, which takes precedence over `config.yml` — keeps the token out of config backups and support pastes.
+- **Periodic update check:** the Modrinth check now repeats every `update-checker.interval-hours` (default 24, 0 = startup only) so long-running servers get notified too.
+- **Audit log rotation:** `command-audit.max-file-size-mb` (default 10) rotates `audit.log` to `audit.log.old` so it no longer grows unbounded.
+- **Startup notification** is now sent when the Discord connection is actually established instead of after a fixed 5-second delay (which silently skipped it on slow logins).
+- **LICENSE file added** (MIT) — the README referenced it, but it didn't exist.
+
+### Security
+- Blocked-command checks can no longer be bypassed via plugin namespaces: **all** namespaced commands (`minecraft:op`, `essentials:op`, `anyplugin:cmd`, ...) are rejected. Previously only `minecraft:`, `bukkit:`, `spigot:` and `paper:` were caught, so `essentials:op` slipped past the `op` block.
+- Leading slashes are stripped before the security check, so `/op` cannot bypass the `op` blocklist entry.
+- `!mc` commands are ignored in direct messages — console access is only possible in guild channels where the channel restriction can apply.
+- Default blocklist extended to `op`, `deop`, `stop`, `restart`, `reload`, `ban-ip` (existing configs keep their own list).
+
+### Bugfixes
+- Config validation no longer runs before JDA is connected — the channel cache was still empty right after startup, producing false "invalid channel-id" warnings on every start/reload. Validation now runs once the connection is established.
+- Fixed a thread leak on `/cdr reload`: the previous `AuditLogger` writer thread is now shut down before a new one is created, and disabling the audit log via reload actually deactivates it.
+- Fixed command aliases with a missing/non-string target being loaded as the literal command `"null"`; invalid aliases are now skipped with a warning. Alias keys are also normalized to lowercase so aliases with capital letters match.
+- Fixed the shutdown notification potentially hanging `onDisable()` forever — `complete()` has no timeout and retries rate limits indefinitely; replaced with a hard 5-second timeout.
+- Fixed oversized log lines producing an empty code block in Discord; overlong lines are now truncated instead of silently dropped.
+
+### Improvements
+- Watchdog reconnects no longer run on the main server thread — `stopDiscordStuff()` waits up to ~7s on JDA shutdown, which previously caused lag spikes on every reconnect attempt.
+- A blocked command no longer consumes rate-limit quota (security check now runs before the rate limiter).
+- `lastConnected`/`restartBackoffSec` are now `volatile` (written by the JDA event thread, read by the watchdog thread).
+- Bulk message cleanup uses a 13-day boundary so messages close to Discord's 14-day bulk-delete limit don't fail while requests are queued.
+- Test suite extended from 21 to 41 tests: new coverage for `LogFilter` (level/pattern/category filtering) and `LogFormatter` (Discord message/embed limits), plus new `CommandSecurity` bypass tests.
+
+### Build
+- All shaded JDA transitive dependencies (okhttp, okio, kotlin-stdlib, jackson, nv-websocket, commons-collections4, trove, tink, protobuf) are now relocated into the plugin's own namespace — previously they were shaded unrelocated and could clash with other plugins bundling the same libraries. `slf4j` and annotation-only artifacts are excluded from the JAR entirely.
+
+**Build:** Java 25 | Paper 26.1.2 | JDA 6.1.0 | Folia supported
+**Migration:** Swap the JAR **and add your Discord user ID to `allowed-user-ids`** (see Breaking Change above).
+
+---
+
 ## [2.0.1] - 2026-06-05 — Bugfix, Tests & Setup Guide
 
 Backport of the v1.4.2 fixes to the Minecraft 26.x / Java 25 line.

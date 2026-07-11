@@ -52,11 +52,22 @@ public class LogFormatter {
         for (String line : lines) {
             String formattedLine = useEmojis ? addEmojiToLine(line) : line;
 
+            // Truncate single lines that could never fit into one message
+            int maxLineLength = 2000 - 6; // opening and closing backticks
+            if (formattedLine.length() > maxLineLength) {
+                formattedLine = formattedLine.substring(0, maxLineLength - 2) + "…\n";
+            }
+
             // Ensure we don't exceed Discord's 2000 char limit
             if (content.length() + formattedLine.length() + 3 > 2000) {
                 break;
             }
             content.append(formattedLine);
+        }
+
+        // Only backticks left means nothing fit — don't send an empty block
+        if (content.length() == 3) {
+            return "";
         }
 
         content.append("```");

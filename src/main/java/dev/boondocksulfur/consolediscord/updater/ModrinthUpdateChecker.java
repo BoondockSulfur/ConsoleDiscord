@@ -23,7 +23,7 @@ import java.util.logging.Level;
  * between incompatible builds (e.g. Java 21 vs Java 25).
  *
  * @author BoondockSulfur
- * @version 2.0.1
+ * @version 2.1.0
  */
 public class ModrinthUpdateChecker {
 
