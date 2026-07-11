@@ -6,8 +6,8 @@ A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Min
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
 [![Paper](https://img.shields.io/badge/Paper-26.1.2-green.svg)](https://papermc.io/)
 
-> **Branch Info:** This is the `mc-26` branch for Minecraft 26.x (Java 25).
-> For Minecraft 1.21 - 1.21.11 (Java 21), see the [`main` branch](https://github.com/BoondockSulfur/ConsoleDiscord/tree/main).
+> **Branch Info:** This is the `main` branch for Minecraft 26.x (Java 25).
+> For Minecraft 1.21 - 1.21.11 (Java 21), see the [`legacy` branch](https://github.com/BoondockSulfur/ConsoleDiscord/tree/legacy).
 
 ---
 
