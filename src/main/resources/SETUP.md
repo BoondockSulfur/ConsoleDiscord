@@ -84,6 +84,8 @@ your name → **Copy User ID**.
 
 ```yaml
 # Paste the bot token from step 2.2
+# (or set the CONSOLEDISCORD_BOT_TOKEN environment variable instead,
+# which takes precedence and keeps the token out of config backups)
 bot-token: "YOUR_DISCORD_BOT_TOKEN"
 
 # Channel ID from step 4 where server logs are posted
@@ -92,8 +94,8 @@ log-channel-id: "123456789012345678"
 # Optional: restrict /mc and !mc to one channel (empty = any channel)
 command-channel-id: ""
 
-# Who may run commands from Discord. Empty list = everyone allowed.
-# Use your own User ID from step 4.
+# Who may run commands from Discord. Empty list = NOBODY allowed
+# (deny by default). Use your own User ID from step 4.
 allowed-user-ids:
   - "987654321098765432"
 

@@ -115,7 +115,10 @@ public class MessageCleanup {
                     .takeAsync(1000) // Max 1000 messages per cleanup
                     .thenAccept(messages -> {
                         var selfUser = jda.getSelfUser();
-                        OffsetDateTime twoWeeksAgo = OffsetDateTime.now().minusDays(14);
+                        // Discord bulk delete only accepts messages younger than 14 days;
+                        // use 13 as the boundary so messages close to the limit don't
+                        // cross it while the requests are queued.
+                        OffsetDateTime twoWeeksAgo = OffsetDateTime.now().minusDays(13);
 
                         List<Message> bulkDeletable = new ArrayList<>();
                         List<Message> oldMessages = new ArrayList<>();

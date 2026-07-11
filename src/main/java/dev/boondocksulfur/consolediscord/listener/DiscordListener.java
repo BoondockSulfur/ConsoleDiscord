@@ -11,12 +11,14 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.InteractionContextType;
 import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.CommandSender;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -74,6 +76,7 @@ public class DiscordListener extends ListenerAdapter {
     @Override
     public void onReady(@NotNull ReadyEvent event) {
         SlashCommandData mc = Commands.slash("mc", "Executes a Minecraft command")
+                .setContexts(InteractionContextType.GUILD) // no DMs — channel restriction must be able to apply
                 .addOption(OptionType.STRING, "command", "The Minecraft command without slash", true, true); // Autocomplete enabled
 
         event.getJDA().updateCommands().addCommands(mc).queue(
@@ -154,10 +157,25 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
-        // Check if user has permission
+        // Check if user has permission (directly or via a whitelisted role)
         User user = event.getUser();
-        if (!plugin.isUserAllowed(user.getId())) {
+        if (!plugin.isUserAllowed(user.getId(), event.getMember())) {
             event.reply(plugin.getMessages().getRaw("discord_command.no_permission"))
+                    .setEphemeral(true)
+                    .queue();
+            return;
+        }
+
+        String cmd = event.getOption("command").getAsString();
+
+        // Resolve command alias
+        final String resolvedCommand = resolveAlias(cmd);
+
+        // Check command security before the rate limit, so a blocked
+        // command doesn't consume the user's quota
+        if (!CommandSecurity.isSafeCommand(resolvedCommand)) {
+            String baseCommand = CommandSecurity.getBaseCommand(resolvedCommand);
+            event.reply(plugin.getMessages().get("discord_command.blocked", "command", baseCommand))
                     .setEphemeral(true)
                     .queue();
             return;
@@ -175,20 +193,6 @@ public class DiscordListener extends ListenerAdapter {
                     "current", String.valueOf(current),
                     "max", String.valueOf(max)
             )).setEphemeral(true).queue();
-            return;
-        }
-
-        String cmd = event.getOption("command").getAsString();
-
-        // Resolve command alias
-        final String resolvedCommand = resolveAlias(cmd);
-
-        // Check command security
-        if (!CommandSecurity.isSafeCommand(resolvedCommand)) {
-            String baseCommand = CommandSecurity.getBaseCommand(resolvedCommand);
-            event.reply(plugin.getMessages().get("discord_command.blocked", "command", baseCommand))
-                    .setEphemeral(true)
-                    .queue();
             return;
         }
 
@@ -210,6 +214,12 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
+        // Ignore direct messages: console commands are only accepted in
+        // guild channels, where the channel restriction can apply.
+        if (!event.isFromGuild()) {
+            return;
+        }
+
         String raw = event.getMessage().getContentRaw();
         String prefix = "!mc ";
 
@@ -225,9 +235,26 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
-        // Check if user has permission
-        if (!plugin.isUserAllowed(event.getAuthor().getId())) {
+        // Check if user has permission (directly or via a whitelisted role)
+        if (!plugin.isUserAllowed(event.getAuthor().getId(), event.getMember())) {
             event.getMessage().reply(plugin.getMessages().getRaw("discord_command.no_permission")).queue();
+            return;
+        }
+
+        String cmd = raw.substring(prefix.length()).trim();
+        if (cmd.isEmpty()) {
+            event.getMessage().reply(plugin.getMessages().getRaw("discord_command.empty")).queue();
+            return;
+        }
+
+        // Resolve command alias
+        cmd = resolveAlias(cmd);
+
+        // Check command security before the rate limit, so a blocked
+        // command doesn't consume the user's quota
+        if (!CommandSecurity.isSafeCommand(cmd)) {
+            String baseCommand = CommandSecurity.getBaseCommand(cmd);
+            event.getMessage().reply(plugin.getMessages().get("discord_command.blocked", "command", baseCommand)).queue();
             return;
         }
 
@@ -244,22 +271,6 @@ public class DiscordListener extends ListenerAdapter {
                     "current", String.valueOf(current),
                     "max", String.valueOf(max)
             )).queue();
-            return;
-        }
-
-        String cmd = raw.substring(prefix.length()).trim();
-        if (cmd.isEmpty()) {
-            event.getMessage().reply(plugin.getMessages().getRaw("discord_command.empty")).queue();
-            return;
-        }
-
-        // Resolve command alias
-        cmd = resolveAlias(cmd);
-
-        // Check command security
-        if (!CommandSecurity.isSafeCommand(cmd)) {
-            String baseCommand = CommandSecurity.getBaseCommand(cmd);
-            event.getMessage().reply(plugin.getMessages().get("discord_command.blocked", "command", baseCommand)).queue();
             return;
         }
 
@@ -305,21 +316,26 @@ public class DiscordListener extends ListenerAdapter {
             String userId,
             String username
     ) {
-        ConsoleCommandSender console = Bukkit.getServer().getConsoleSender();
-
         SchedulerAdapter.runGlobal(plugin, () -> {
             boolean executed = false;
+            List<String> output = Collections.synchronizedList(new ArrayList<>());
             try {
+                CommandSender sender;
+                if (plugin.isCommandFeedbackEnabled()) {
+                    // Console-privileged sender that captures command feedback,
+                    // so the actual output can be sent back to Discord.
+                    sender = Bukkit.getServer().createCommandSender(component ->
+                            output.add(PlainTextComponentSerializer.plainText().serialize(component)));
+                } else {
+                    sender = Bukkit.getServer().getConsoleSender();
+                }
+
                 // Bukkit.dispatchCommand() returns false for many vanilla commands
                 // that actually executed successfully (e.g. "time set day"), so its
                 // return value is not a reliable success indicator. We treat "no
-                // exception thrown" as executed; the real command output is forwarded
-                // to Discord via the console log appender anyway.
-                Bukkit.dispatchCommand(console, command);
+                // exception thrown" as executed.
+                Bukkit.dispatchCommand(sender, command);
                 executed = true;
-
-                String msg = plugin.getMessages().get("discord_command.executing", "command", command);
-                sendResponse(slash, slashEvent, channel, msg);
 
             } catch (Exception ex) {
                 String msg = plugin.getMessages().get("discord_command.failed", "command", command);
@@ -331,7 +347,64 @@ public class DiscordListener extends ListenerAdapter {
                     plugin.getAuditLogger().logCommand(userId, username, command, executed);
                 }
             }
+
+            if (!executed) {
+                return;
+            }
+
+            if (plugin.isCommandFeedbackEnabled()) {
+                // Some feedback arrives a moment after dispatch (e.g. from async
+                // command handling); collect briefly before replying with the output.
+                SchedulerAdapter.runAsyncLater(plugin,
+                        () -> sendCommandOutput(command, output, slash, slashEvent, channel),
+                        Math.max(1L, plugin.getFeedbackCollectTicks()));
+            } else {
+                String msg = plugin.getMessages().get("discord_command.executing", "command", command);
+                sendResponse(slash, slashEvent, channel, msg);
+            }
         });
+    }
+
+    /**
+     * Sends the captured command output back to Discord, wrapped in a code
+     * block and truncated to fit Discord's 2000 character message limit.
+     *
+     * @param command The executed command
+     * @param output The captured feedback lines (synchronized list)
+     * @param slash Whether this is a slash command response
+     * @param slashEvent The slash command event (if applicable)
+     * @param channel The Discord channel to send to
+     */
+    private void sendCommandOutput(
+            String command,
+            List<String> output,
+            boolean slash,
+            SlashCommandInteractionEvent slashEvent,
+            MessageChannel channel
+    ) {
+        String msg;
+        synchronized (output) {
+            if (output.isEmpty()) {
+                msg = plugin.getMessages().get("discord_command.no_output", "command", command);
+            } else {
+                StringBuilder sb = new StringBuilder(
+                        plugin.getMessages().get("discord_command.output", "command", command));
+                sb.append("\n```\n");
+                for (String line : output) {
+                    if (line.length() > 400) {
+                        line = line.substring(0, 400) + "…";
+                    }
+                    if (sb.length() + line.length() + 5 > 1900) {
+                        sb.append("…\n");
+                        break;
+                    }
+                    sb.append(line).append('\n');
+                }
+                sb.append("```");
+                msg = sb.toString();
+            }
+        }
+        sendResponse(slash, slashEvent, channel, msg);
     }
 
     /**

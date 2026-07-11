@@ -33,6 +33,7 @@ public class AuditLogger {
     private final File logFile;
     private final boolean logToDiscord;
     private final String auditChannelId;
+    private final long maxFileBytes;
     private final ExecutorService writeExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "ConsoleDiscord-AuditWriter");
         t.setDaemon(true);
@@ -47,12 +48,15 @@ public class AuditLogger {
      * @param logFileName Name of the log file
      * @param logToDiscord Whether to also log to Discord
      * @param auditChannelId Discord channel ID for audit logs
+     * @param maxFileSizeMb Rotate the log file when it exceeds this size (0 = never)
      */
-    public AuditLogger(Plugin plugin, String logFileName, boolean logToDiscord, String auditChannelId) {
+    public AuditLogger(Plugin plugin, String logFileName, boolean logToDiscord, String auditChannelId,
+                       long maxFileSizeMb) {
         this.plugin = plugin;
         this.logFile = new File(plugin.getDataFolder(), logFileName);
         this.logToDiscord = logToDiscord;
         this.auditChannelId = auditChannelId;
+        this.maxFileBytes = maxFileSizeMb * 1024L * 1024L;
 
         // Create log file if it doesn't exist
         if (!logFile.exists()) {
@@ -102,6 +106,7 @@ public class AuditLogger {
      */
     private void logToFile(String line) {
         writeExecutor.submit(() -> {
+            rotateIfNeeded();
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(logFile, true))) {
                 writer.write(line);
                 writer.newLine();
@@ -109,6 +114,29 @@ public class AuditLogger {
                 plugin.getLogger().log(Level.WARNING, "Could not write to audit log file", e);
             }
         });
+    }
+
+    /**
+     * Rotates the audit log when it grows past the configured size limit:
+     * the current file is renamed to "<name>.old" (replacing a previous
+     * backup) so the log never grows unbounded. Runs on the writer thread.
+     */
+    private void rotateIfNeeded() {
+        if (maxFileBytes <= 0 || logFile.length() < maxFileBytes) {
+            return;
+        }
+        try {
+            File backup = new File(logFile.getParentFile(), logFile.getName() + ".old");
+            if (backup.exists() && !backup.delete()) {
+                plugin.getLogger().warning("Could not delete old audit log backup: " + backup.getName());
+                return;
+            }
+            if (!logFile.renameTo(backup)) {
+                plugin.getLogger().warning("Could not rotate audit log file");
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Error rotating audit log file", e);
+        }
     }
 
     /**

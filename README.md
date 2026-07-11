@@ -2,9 +2,12 @@
 
 A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Minecraft server. Focused on **intelligent console forwarding** with professional monitoring and security features.
 
-[![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.org/projects/jdk/21/)
 [![Paper](https://img.shields.io/badge/Paper-1.21--1.21.11-green.svg)](https://papermc.io/)
+
+> **Branch Info:** This is the `legacy` branch for Minecraft 1.21 - 1.21.11 (Java 21).
+> For Minecraft 26.x (Java 25), see the [`main` branch](https://github.com/BoondockSulfur/ConsoleDiscord/tree/main).
 
 ---
 
@@ -22,18 +25,21 @@ A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Min
 ### 🎮 Remote Command Execution
 
 - **Dual Command Support** - `/mc` (Slash Command) + `!mc` (Prefix Command)
+- **Command Output Replies** - The actual command output is sent back to Discord (e.g. the player list for `/mc list`)
 - **Autocomplete** - Intelligent suggestions for common commands (gamemode, weather, time, etc.)
 - **Command Aliases** - Define shortcuts: `tps` → `spark tps`, `save` → `save-all`
-- **User Whitelist** - Only authorized Discord users can execute commands
+- **User & Role Whitelist** - Only authorized Discord users (or users with a whitelisted role) can execute commands
 - **Channel Restriction** - Restrict commands to a specific channel
 
 ### 🔒 Security
 
-- **Configurable Command Blacklist** - You decide which commands to block (default: only `op`/`deop`)
+- **Deny by Default** - Nobody may run commands until users or roles are whitelisted
+- **Configurable Command Blacklist** - You decide which commands to block (default: `op`, `deop`, `stop`, `restart`, `reload`, `ban-ip`)
 - **Rate Limiting** - Max 5 commands/minute per user (configurable)
-- **Audit Logging** - Every command is logged with user, timestamp, and status
+- **Audit Logging** - Every command is logged with user, timestamp, and status (with size-based log rotation)
 - **Permission System** - Bukkit permissions for all admin commands
-- **Namespace Protection** - Commands with `minecraft:`, `bukkit:`, `spigot:`, `paper:` are always blocked
+- **Namespace Protection** - ALL namespaced commands (`minecraft:op`, `essentials:op`, ...) are always blocked
+- **Token via Environment** - Optionally provide the bot token via `CONSOLEDISCORD_BOT_TOKEN` instead of config.yml
 
 ### 📊 Performance Monitoring
 
@@ -45,9 +51,11 @@ A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Min
 ### 🛠️ Management
 
 - **Startup/Shutdown Notifications** - 🟢 Server started / 🔴 Server stopped with uptime
-- **Auto-Cleanup** - Automatically deletes old log messages (e.g., after 7 days)
+- **Status Command** - `/cdr status` shows connection state, channels, log queue and whitelist at a glance
+- **Auto-Cleanup** - Automatically deletes old log messages (e.g., after 7 days), manual trigger via `/cdr cleanup`
 - **Watchdog System** - Automatic reconnect on Discord connection loss
-- **Config Validation** - Validates channel IDs on startup
+- **Config Validation** - Validates channel IDs once the Discord connection is established
+- **Update Checker** - Checks Modrinth on startup and every 24 hours (configurable)
 
 ### 🌍 Internationalization
 
@@ -73,6 +81,7 @@ A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Min
 
 ```yaml
 # Discord Bot Token from https://discord.com/developers/applications
+# (alternatively via the CONSOLEDISCORD_BOT_TOKEN environment variable)
 bot-token: "YOUR_DISCORD_BOT_TOKEN"
 
 # Text channel ID for server logs
@@ -81,9 +90,13 @@ log-channel-id: "123456789012345678"
 # Optional: Restrict commands to a specific channel
 command-channel-id: ""
 
-# User whitelist (Discord user IDs). Empty = everyone allowed
+# User whitelist (Discord user IDs).
+# If users AND roles are both empty, nobody is allowed (deny by default)
 allowed-user-ids:
   - "123456789012345678"
+
+# Role whitelist (Discord role IDs) - everyone with one of these roles may run commands
+allowed-role-ids: []
 
 # Log flush interval in ticks (20 ticks = 1 second)
 log-flush-ticks: 40
@@ -209,6 +222,10 @@ auto-cleanup:
 |---------|-----------|-------------|
 | `/cdr reload` | `consolediscord.reload` | Reloads the plugin |
 | `/cdr debug [on\|off\|status]` | `consolediscord.debug` | Toggle debug mode |
+| `/cdr status` | `consolediscord.status` | Shows connection status, channels, log queue and whitelist |
+| `/cdr cleanup` | `consolediscord.cleanup` | Triggers a manual message cleanup |
+
+All subcommands support tab completion.
 
 ### Discord
 
@@ -235,24 +252,19 @@ You decide which commands to block! **Default recommendation** (already configur
 command-security:
   enabled: true
   blocked-commands:
-    - "op"      # Prevents OP assignment via Discord
-    - "deop"    # Prevents OP removal via Discord
+    - "op"        # Prevents OP assignment via Discord
+    - "deop"      # Prevents OP removal via Discord
+    - "stop"      # Stop server
+    - "restart"   # Restart server
+    - "reload"    # Reload plugins
+    - "ban-ip"    # IP bans
 ```
 
-**Want to block more?** Simply add:
-```yaml
-blocked-commands:
-  - "op"
-  - "deop"
-  - "stop"        # Stop server
-  - "restart"     # Restart server
-  - "whitelist"   # Manipulate whitelist
-  - "reload"      # Reload plugins
-```
+**Want to block more?** Simply add entries like `"whitelist"`, `"ban"`, `"kick"` or `"execute"`.
 
 **Want to allow everything?** Set `enabled: false` or empty the list.
 
-**Always blocked** (not configurable): Namespace prefixes `minecraft:`, `bukkit:`, `spigot:`, `paper:`
+**Always blocked** (not configurable): ALL namespaced commands (`minecraft:op`, `essentials:op`, `anyplugin:cmd`, ...) — otherwise the blocklist could be bypassed via namespaces. Leading slashes are stripped before checking, so `/op` cannot bypass `op` either.
 
 ### Rate Limiting
 
@@ -364,7 +376,29 @@ This plugin is **fully compatible with Folia**! It automatically detects whether
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### Version 1.4.2 (Current) - Bugfix, Tests & Setup Guide
+### Version 1.5.0 (Current) - Security, Stability & Feature Release
+
+**New in 1.5.0** (same changes as v2.1.0 on the MC 26.x line):
+- 🔒 **BREAKING:** Empty `allowed-user-ids`/`allowed-role-ids` lists now mean **nobody** may run Discord commands (was: everyone). Add your Discord user ID or a role ID to keep using `/mc` and `!mc`.
+- ✨ `/mc` and `!mc` now reply with the **actual command output** (e.g. the player list for `list`)
+- ✨ Role-based whitelist via `allowed-role-ids`
+- ✨ New `/cdr status` command (connection, channels, log queue, whitelist) and `/cdr cleanup` for manual message cleanup
+- ✨ Tab completion for all `/cdr` subcommands
+- ✨ Bot token can be provided via the `CONSOLEDISCORD_BOT_TOKEN` environment variable
+- ✨ Periodic update re-check (default every 24h) instead of startup-only
+- ✨ Audit log rotation (default 10 MB)
+- ✨ Startup notification now waits for the Discord connection instead of a fixed delay
+- 🔒 ALL namespaced commands (`essentials:op`, `anyplugin:cmd`, ...) are now blocked — the blocklist could previously be bypassed via plugin namespaces
+- 🔒 Leading slashes are stripped before the security check (`/op` can no longer bypass the `op` block)
+- 🔒 `!mc` no longer works in direct messages
+- 🔒 Default blocklist extended: `stop`, `restart`, `reload`, `ban-ip`
+- 🐛 Fixed false "invalid channel" warnings on startup (validation now waits for the Discord connection)
+- 🐛 Fixed audit logger leaking a thread on every `/cdr reload`
+- 🐛 Fixed shutdown notification potentially hanging the server stop
+- ⚡ Watchdog reconnects no longer block the main thread
+- 📦 All shaded JDA dependencies (okhttp, jackson, kotlin, ...) are now relocated to avoid conflicts with other plugins
+
+### Version 1.4.2 - Bugfix, Tests & Setup Guide
 
 **New in 1.4.2:**
 - 🐛 Fixed false "command failed" replies in Discord for vanilla commands that actually executed

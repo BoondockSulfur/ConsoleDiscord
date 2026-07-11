@@ -1,3 +1,6 @@
+# Tip: You can also provide the token via the CONSOLEDISCORD_BOT_TOKEN
+# environment variable — it takes precedence over this value and keeps
+# the token out of config backups.
 bot-token: "YOUR_DISCORD_BOT_TOKEN"
 
 # Text channel for server logs
@@ -6,8 +9,14 @@ log-channel-id: "123456789012345678"
 # Optional: Channel where /mc or !mc is allowed
 command-channel-id: ""
 
-# Who can use /mc and !mc (user IDs). If empty, everyone is allowed.
+# Who can use /mc and !mc (Discord user IDs).
+# IMPORTANT: If BOTH lists (users and roles) are empty, NOBODY may run
+# commands (deny by default).
 allowed-user-ids: []
+#  - "123456789012345678"
+
+# Alternatively/additionally: allow everyone with one of these Discord role IDs
+allowed-role-ids: []
 #  - "123456789012345678"
 
 # How often logs are sent to Discord (20 ticks = 1 second)
@@ -75,12 +84,24 @@ command-security:
   # Enable security system
   enabled: true
   # Commands that should be blocked (list is customizable)
-  # Default recommendation: block op and deop
-  # You can add more like: stop, restart, whitelist, ban-ip, reload, etc.
+  # You can add more like: whitelist, ban, kick, execute, etc.
   blocked-commands:
     - "op"
     - "deop"
-  # Note: Namespace prefixes (minecraft:, bukkit:, spigot:, paper:) are ALWAYS blocked
+    - "stop"
+    - "restart"
+    - "reload"
+    - "ban-ip"
+  # Note: ALL namespaced commands (minecraft:op, essentials:op, anyplugin:cmd)
+  # are ALWAYS blocked, so the blocklist cannot be bypassed via namespaces.
+
+# Command feedback - Reply on Discord with the actual command output
+command-feedback:
+  # If enabled, /mc and !mc reply with the command's real output.
+  # If disabled, only a generic "executing" confirmation is sent.
+  enabled: true
+  # How long to collect output before replying (in ticks, 20 = 1 second)
+  collect-ticks: 20
 
 # Command aliases - Shortcuts for frequent commands
 command-aliases:
@@ -100,6 +121,9 @@ command-audit:
   log-to-discord: false
   # Discord channel for audit logs
   audit-channel-id: ""
+  # Rotate the audit log when it exceeds this size in MB (0 = never rotate).
+  # The previous log is kept once as "<name>.old".
+  max-file-size-mb: 10
 
 # ===== PERFORMANCE ALERTS =====
 
@@ -134,3 +158,6 @@ auto-cleanup:
 update-checker:
   # Check for updates on startup (via Modrinth API)
   enabled: true
+  # Re-check periodically so long-running servers get notified too
+  # (in hours, 0 = only check once at startup)
+  interval-hours: 24

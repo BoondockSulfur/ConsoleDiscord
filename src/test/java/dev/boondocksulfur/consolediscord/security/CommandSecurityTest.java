@@ -17,7 +17,7 @@ class CommandSecurityTest {
 
     @BeforeEach
     void resetToDefaults() {
-        // Empty list -> falls back to the default blocked set (op/deop).
+        // Empty list -> falls back to the default blocked set.
         CommandSecurity.configure(true, List.of());
     }
 
@@ -25,6 +25,10 @@ class CommandSecurityTest {
     void defaultBlockedCommandsAreRejected() {
         assertFalse(CommandSecurity.isSafeCommand("op Notch"));
         assertFalse(CommandSecurity.isSafeCommand("deop Notch"));
+        assertFalse(CommandSecurity.isSafeCommand("stop"));
+        assertFalse(CommandSecurity.isSafeCommand("restart"));
+        assertFalse(CommandSecurity.isSafeCommand("reload confirm"));
+        assertFalse(CommandSecurity.isSafeCommand("ban-ip 1.2.3.4"));
     }
 
     @Test
@@ -48,9 +52,27 @@ class CommandSecurityTest {
     }
 
     @Test
+    void arbitraryPluginNamespacesAreBlocked() {
+        // Any namespaced form would otherwise bypass the blocklist entry.
+        assertFalse(CommandSecurity.isSafeCommand("essentials:op Notch"));
+        assertFalse(CommandSecurity.isSafeCommand("someplugin:stop"));
+        assertFalse(CommandSecurity.isSafeCommand("x:say hello"));
+    }
+
+    @Test
+    void leadingSlashesCannotBypassBlocklist() {
+        assertFalse(CommandSecurity.isSafeCommand("/op Notch"));
+        assertFalse(CommandSecurity.isSafeCommand("//op Notch"));
+        assertFalse(CommandSecurity.isSafeCommand(" /minecraft:op Notch"));
+        // Harmless commands stay allowed with a leading slash.
+        assertTrue(CommandSecurity.isSafeCommand("/say hello"));
+    }
+
+    @Test
     void namespacePrefixesBlockedEvenWhenSecurityDisabled() {
         CommandSecurity.configure(false, List.of());
         assertFalse(CommandSecurity.isSafeCommand("minecraft:kill @a"));
+        assertFalse(CommandSecurity.isSafeCommand("essentials:op Notch"));
         // ...but op is no longer blocked when security is off.
         assertTrue(CommandSecurity.isSafeCommand("op Notch"));
     }
@@ -75,6 +97,8 @@ class CommandSecurityTest {
     void getBaseCommandExtractsFirstToken() {
         assertEquals("gamemode", CommandSecurity.getBaseCommand("gamemode creative Notch"));
         assertEquals("stop", CommandSecurity.getBaseCommand("  STOP  "));
+        assertEquals("op", CommandSecurity.getBaseCommand("/op Notch"));
+        assertEquals("", CommandSecurity.getBaseCommand("///"));
         assertEquals("", CommandSecurity.getBaseCommand(null));
     }
 }

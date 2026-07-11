@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Automatically detects the server type and uses the appropriate scheduler API.
  *
  * @author BoondockSulfur
- * @version 1.4.2
+ * @version 1.5.0
  */
 public class SchedulerAdapter {
 

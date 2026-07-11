@@ -15,16 +15,19 @@ discord.shutdown_interrupted: "Shutdown wurde unterbrochen."
 discord.slash_registered: "Slash-Command /mc bei Discord registriert."
 discord.slash_failed: "Konnte Slash-Command /mc nicht registrieren: {error}"
 discord.reconnecting: "Nicht verbunden seit {seconds}s (Status={status}). Starte JDA neu..."
+discord.token_from_env: "Bot-Token wird aus der Umgebungsvariable CONSOLEDISCORD_BOT_TOKEN verwendet."
 
 # Befehle
 command.usage: "Benutzung: {usage}"
-command.usage_cdr: "/cdr reload oder /cdr debug [on|off|status]"
+command.usage_cdr: "/cdr reload | debug [on|off|status] | status | cleanup"
 command.no_permission: "Du hast keine Berechtigung für diesen Befehl."
 command.reload_success: "ConsoleDiscord neu geladen."
 command.debug_status: "ConsoleDiscord Debug-Status: {status}"
 command.debug_on: "AN"
 command.debug_off: "AUS"
-command.unknown_subcommand: "Unbekannter Unterbefehl. Benutzung: /cdr reload oder /cdr debug [on|off|status]"
+command.unknown_subcommand: "Unbekannter Unterbefehl. Benutzung: /cdr reload | debug [on|off|status] | status | cleanup"
+command.cleanup_started: "Nachrichten-Aufräumen gestartet."
+command.cleanup_disabled: "Auto-Cleanup ist in der config.yml deaktiviert (auto-cleanup.enabled)."
 
 # Discord-Befehle
 discord_command.wrong_channel: "Du darfst hier keine MC-Befehle ausführen."
@@ -34,6 +37,8 @@ discord_command.failed: "Konnte Befehl nicht ausführen: `{command}`"
 discord_command.blocked: "⛔ Befehl `{command}` ist aus Sicherheitsgründen blockiert."
 discord_command.rate_limited: "⏱️ Rate-Limit überschritten! Bitte warte {seconds}s, bevor du es erneut versuchst. ({current}/{max} Befehle verwendet)"
 discord_command.empty: "Bitte gib einen Minecraft-Befehl an."
+discord_command.output: "📤 Ausgabe von `{command}`:"
+discord_command.no_output: "✅ Befehl `{command}` ausgeführt (keine Ausgabe)."
 
 # Logging
 log.no_permission: "Keine Rechte im Log-Channel. Stoppe Log-Task."
@@ -53,12 +58,26 @@ watchdog.error: "Watchdog-Fehler."
 # Status
 status.on: "AN"
 status.off: "AUS"
+status.header: "=== ConsoleDiscord Status ==="
+status.version: "Version: {version}"
+status.server_type: "Server-Typ: {type}"
+status.discord: "Discord-Verbindung: {status}"
+status.not_started: "NICHT GESTARTET (bot-token prüfen)"
+status.log_channel: "Log-Kanal: {status}"
+status.command_channel: "Befehls-Kanal: {status}"
+status.channel_invalid: "{id} (nicht gefunden!)"
+status.not_set: "nicht gesetzt"
+status.log_queue: "Log-Warteschlange: {count} wartende Nachricht(en)"
+status.whitelist: "Whitelist: {users} Nutzer, {roles} Rolle(n)"
+status.update_available: "Update verfügbar: {version} (siehe Modrinth)"
 
 # Security
 security.commands_blocked: "{count} Befehle blockiert: {commands}"
 security.no_commands_blocked: "Keine Befehle blockiert - alle Commands erlaubt."
 security.disabled: "⚠️ Command-Sicherheit ist DEAKTIVIERT! Alle Befehle sind erlaubt."
 security.alias_blocked: "⚠️ Alias '{alias}' zeigt auf blockierten Befehl '{command}' und wurde nicht geladen."
+security.alias_invalid: "⚠️ Alias '{alias}' hat kein gültiges Ziel-Kommando und wurde nicht geladen."
+security.no_allowed_users: "⚠️ allowed-user-ids und allowed-role-ids sind leer - Discord-Befehle sind DEAKTIVIERT. Trage Discord-User- oder Rollen-IDs in der config.yml ein, um sie zu aktivieren."
 
 # Benachrichtigungen
 notification.startup_title: "🟢 Server gestartet"

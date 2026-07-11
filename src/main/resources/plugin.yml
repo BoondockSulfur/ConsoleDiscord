@@ -1,6 +1,6 @@
 name: ConsoleDiscord
 main: dev.boondocksulfur.consolediscord.ConsoleDiscordPlugin
-version: 1.4.2
+version: 1.5.0
 api-version: '1.21'
 folia-supported: true
 authors: [ "BoondockSulfur" ]
@@ -10,7 +10,7 @@ description: Advanced Discord integration with log forwarding, remote commands, 
 commands:
   cdr:
     description: Management commands for ConsoleDiscord
-    usage: "/cdr reload | /cdr debug [on|off|status]"
+    usage: "/cdr reload | /cdr debug [on|off|status] | /cdr status | /cdr cleanup"
     aliases: ["consolediscord"]
 
 permissions:
@@ -19,4 +19,10 @@ permissions:
     default: op
   consolediscord.debug:
     description: Allows toggling debug logging
+    default: op
+  consolediscord.status:
+    description: Allows viewing the plugin status
+    default: op
+  consolediscord.cleanup:
+    description: Allows triggering a manual message cleanup
     default: op

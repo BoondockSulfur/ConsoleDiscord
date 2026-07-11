@@ -15,17 +15,8 @@ public class CommandSecurity {
      * Default commands that are recommended to be blocked for security reasons.
      * These can be overridden via config.yml.
      */
-    private static final Set<String> DEFAULT_BLOCKED_COMMANDS = Set.of("op", "deop");
-
-    /**
-     * Command prefixes that are always blocked to prevent plugin manipulation.
-     * These cannot be configured and are always enforced.
-     */
-    private static final Set<String> BLOCKED_PREFIXES = Set.of(
-            "minecraft:",
-            "bukkit:",
-            "spigot:",
-            "paper:"
+    private static final Set<String> DEFAULT_BLOCKED_COMMANDS = Set.of(
+            "op", "deop", "stop", "restart", "reload", "ban-ip"
     );
 
     /**
@@ -67,48 +58,28 @@ public class CommandSecurity {
      * @return true if the command is safe, false if it's blocked
      */
     public static boolean isSafeCommand(String command) {
-        if (command == null || command.trim().isEmpty()) {
+        String baseCommand = getBaseCommand(command);
+        if (baseCommand.isEmpty()) {
             return false;
         }
 
-        String normalized = command.trim().toLowerCase(Locale.ROOT);
-        String baseCommand = normalized.split(" ")[0];
+        // Namespaced commands (minecraft:op, essentials:op, anyplugin:cmd) are
+        // always blocked — otherwise every blocklist entry could be bypassed
+        // via its namespaced form.
+        if (baseCommand.contains(":")) {
+            return false;
+        }
 
-        // If security is disabled, only check prefixes
         if (!securityEnabled.get()) {
-            return !isBlockedPrefix(baseCommand);
+            return true;
         }
 
-        // Check blocked commands
-        if (blockedCommands.get().contains(baseCommand)) {
-            return false;
-        }
-
-        // Check blocked prefixes (always enforced)
-        if (isBlockedPrefix(baseCommand)) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Checks if a command has a blocked namespace prefix.
-     *
-     * @param baseCommand The base command to check
-     * @return true if the command has a blocked prefix
-     */
-    private static boolean isBlockedPrefix(String baseCommand) {
-        for (String prefix : BLOCKED_PREFIXES) {
-            if (baseCommand.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return !blockedCommands.get().contains(baseCommand);
     }
 
     /**
      * Gets the base command name from a full command string.
+     * Leading slashes are stripped so "/op" and "op" resolve to the same name.
      *
      * @param command The full command string
      * @return The base command name
@@ -117,7 +88,14 @@ public class CommandSecurity {
         if (command == null || command.trim().isEmpty()) {
             return "";
         }
-        return command.trim().split(" ")[0].toLowerCase(Locale.ROOT);
+        String normalized = command.trim().toLowerCase(Locale.ROOT);
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        return normalized.split(" ")[0];
     }
 
     /**
