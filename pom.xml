@@ -6,13 +6,15 @@
 
     <groupId>dev.boondocksulfur</groupId>
     <artifactId>consolediscord</artifactId>
-    <version>2.1.0</version>
+    <version>2.1.1</version>
     <packaging>jar</packaging>
     <name>ConsoleDiscord</name>
     <description>Advanced Discord integration with log forwarding, remote commands, performance monitoring, and Folia support</description>
 
     <properties>
-        <java.version>25</java.version>
+        <!-- Ziel Java 21, damit ein Jar auf MC 1.21.x (Java 21) und 26.x läuft.
+             Gebaut wird mit JDK 25, weil die 26er Paper-API Java-25-Klassen enthält. -->
+        <java.version>21</java.version>
         <paper.version>26.1.2.build.53-stable</paper.version>
         <jda.version>6.1.0</jda.version>
         <!-- nur damit IntelliJ log4j-core kennt -->
@@ -83,14 +85,13 @@
 
     <build>
         <plugins>
-            <!-- damit wirklich mit Java 25 kompiliert wird -->
+            <!-- release statt source/target: prüft auch gegen die Java-21-Standardbibliothek -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>25</source>
-                    <target>25</target>
+                    <release>${java.version}</release>
                 </configuration>
             </plugin>
 

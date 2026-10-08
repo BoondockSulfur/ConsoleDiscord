@@ -39,7 +39,7 @@ public class AuditLogger {
         t.setDaemon(true);
         return t;
     });
-    private JDA jda;
+    private volatile JDA jda;
 
     /**
      * Creates a new audit logger.
@@ -87,18 +87,40 @@ public class AuditLogger {
      * @param success Whether the command was successful
      */
     public void logCommand(String userId, String username, String command, boolean success) {
+        log(userId, username, command, success ? "SUCCESS" : "FAILED", success);
+    }
+
+    /**
+     * Logs a command attempt that was rejected before execution
+     * (user not whitelisted, command blocked, rate limit).
+     *
+     * @param userId The Discord user ID
+     * @param username The Discord username
+     * @param command The requested command
+     * @param reason Short reason, e.g. "NOT_ALLOWED", "BLOCKED", "RATE_LIMITED"
+     */
+    public void logDenied(String userId, String username, String command, String reason) {
+        log(userId, username, command, "DENIED: " + reason, false);
+    }
+
+    private void log(String userId, String username, String command, String status, boolean success) {
         String timestamp = FORMATTER.format(Instant.now());
-        String status = success ? "SUCCESS" : "FAILED";
+        // One entry per line: line breaks in user input must not forge entries
         String logLine = String.format("[%s] User#%s (%s) executed: %s [%s]",
-                timestamp, userId, username, command, status);
+                timestamp, userId, oneLine(username), oneLine(command), status);
 
         // Log to file
         logToFile(logLine);
 
         // Log to Discord if enabled
-        if (logToDiscord && jda != null && auditChannelId != null && !auditChannelId.isBlank()) {
-            logToDiscord(userId, username, command, success, timestamp);
+        JDA current = jda;
+        if (logToDiscord && current != null && auditChannelId != null && !auditChannelId.isBlank()) {
+            logToDiscord(current, userId, username, command, status, success, timestamp);
         }
+    }
+
+    private static String oneLine(String text) {
+        return text == null ? "" : text.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n");
     }
 
     /**
@@ -155,19 +177,28 @@ public class AuditLogger {
     }
 
     /**
+     * Stops accepting new entries without waiting: entries already queued
+     * are still written by the writer thread, which then ends.
+     */
+    public void shutdownAsync() {
+        writeExecutor.shutdown();
+    }
+
+    /**
      * Sends an audit log message to Discord.
      */
-    private void logToDiscord(String userId, String username, String command, boolean success, String timestamp) {
-        if (jda.getStatus() != JDA.Status.CONNECTED) {
+    private void logToDiscord(JDA current, String userId, String username, String command,
+                              String status, boolean success, String timestamp) {
+        if (current.getStatus() != JDA.Status.CONNECTED) {
             return;
         }
 
-        TextChannel channel = jda.getTextChannelById(auditChannelId);
+        TextChannel channel = current.getTextChannelById(auditChannelId);
         if (channel == null) {
             return;
         }
 
-        MessageEmbed embed = createAuditEmbed(userId, username, command, success, timestamp);
+        MessageEmbed embed = createAuditEmbed(userId, username, command, status, success, timestamp);
 
         channel.sendMessageEmbeds(embed).queue(
                 v -> {},
@@ -178,16 +209,16 @@ public class AuditLogger {
     /**
      * Creates a Discord embed for an audit log entry.
      */
-    private MessageEmbed createAuditEmbed(String userId, String username, String command, boolean success, String timestamp) {
+    private MessageEmbed createAuditEmbed(String userId, String username, String command,
+                                          String status, boolean success, String timestamp) {
         Color color = success ? Color.GREEN : Color.RED;
         String emoji = success ? "✅" : "❌";
-        String status = success ? "Success" : "Failed";
 
         return new EmbedBuilder()
                 .setTitle(emoji + " Command Executed")
                 .setColor(color)
-                .addField("User", username + " (`" + userId + "`)", false)
-                .addField("Command", "`" + command + "`", false)
+                .addField("User", fieldValue(username + " (" + userId + ")"), false)
+                .addField("Command", fieldValue(command), false)
                 .addField("Status", status, true)
                 .addField("Timestamp", timestamp, true)
                 .setTimestamp(Instant.now())
@@ -201,5 +232,18 @@ public class AuditLogger {
      */
     public File getLogFile() {
         return logFile;
+    }
+
+    /**
+     * Wraps untrusted text in a code block that fits Discord's 1024 character
+     * field limit; backticks are broken up so the text can't close the block.
+     */
+    private static String fieldValue(String text) {
+        String escaped = text.replace("`", "`\u200B");
+        int max = 1024 - 8; // code block fences + ellipsis
+        if (escaped.length() > max) {
+            escaped = escaped.substring(0, max - 1) + "…";
+        }
+        return "```" + escaped + "```";
     }
 }

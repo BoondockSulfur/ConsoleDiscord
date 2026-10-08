@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.1] - 2026-10-08 — Bugfix & Compatibility Release
+
+### Security
+- Blocklist also checks server aliases (`rl` → `reload`) and commands nested in `execute … run` / `return run`.
+- Bundled library logs (JDA) are no longer mirrored to Discord.
+- Audit log escapes line breaks and records denied attempts (not allowed, blocked, rate limited).
+- `!mc` denial replies are limited to one per user and minute; autocomplete only for allowed users.
+- The bot no longer pings anyone; masked links in log lines are neutralized, command output can't break out of its code block.
+
+### Fixed
+- Embed log mode recognizes levels again (thread names with spaces or slashes were shown as INFO).
+- Embed log lines always show the full console line incl. time (2.1.0 dropped it for single-word thread names).
+- Embed log lines are shown literally: markdown (`dark_oak_button`) is escaped, Minecraft color codes are removed.
+- A long entry such as a stack trace starts a new embed instead of cutting off the following lines.
+- Performance alerts and auto-cleanup keep working after an automatic Discord reconnect.
+- Long commands no longer break the Discord audit embed or suppress the command reply.
+- `/cdr reload` no longer blocks the main thread while the old Discord connection or the audit writer shuts down.
+- `DEBUG`/`TRACE` in `log-levels` are forwarded when the server's log4j configuration logs them.
+- `auto-cleanup` values below 1 are clamped (0 days deleted every bot message, 0 hours ran every tick).
+- Auto-cleanup reads the history from the cutoff, so busy channels (>1000 new messages) are cleaned too.
+- Missing permissions in one channel only pause that channel instead of stopping all log forwarding.
+- The watchdog no longer restarts JDA during its own reconnect (5 min grace) or after a failed login.
+- The watchdog retries the Discord start if it failed with an exception (backoff up to 2 min).
+- Disabling the plugin during a watchdog restart no longer leaves a Discord connection running.
+- Code block mode splits long batches into several messages instead of dropping lines.
+- Deleted default aliases, categories and patterns no longer come back on restart.
+- Command aliases and messages are swapped atomically on reload (no race with Discord threads).
+
+### Changed
+- One jar for Minecraft 1.21.x and 26.x (Java 21 target, `api-version: '1.21'`).
+- Update notice with clickable Modrinth + CurseForge links, in-game for `consolediscord.update` (OP), once per version on Discord, texts in `messages_*.yml`.
+
 ## [2.1.0] - 2026-07-10 — Security, Stability & Feature Release
 
 Full security and code review of the plugin (fixes three attack vectors, five functional bugs and a packaging issue) plus a set of new quality-of-life features.

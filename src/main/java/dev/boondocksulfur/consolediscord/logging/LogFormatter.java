@@ -17,7 +17,21 @@ import java.util.regex.Pattern;
  */
 public class LogFormatter {
 
-    private static final Pattern LOG_LEVEL_PATTERN = Pattern.compile("\\[(\\w+)/(\\w+)\\]");
+    /**
+     * Matches the "[Thread/LEVEL]:" header of the appender format. Thread names
+     * may contain spaces and slashes ("Server thread", "RCON Client /0:0:0:0:0:0:0:1 #2"),
+     * so the level is taken after the last slash.
+     */
+    static final Pattern LOG_LEVEL_PATTERN = Pattern.compile("\\[([^\\]]+)/(\\w+)\\]:?");
+
+    /** Minecraft formatting codes (§6, §l, §x§f§f…) and ANSI escape sequences. */
+    private static final Pattern COLOR_CODES = Pattern.compile("§[0-9A-FK-ORXa-fk-orx]|\u001B\\[[0-9;]*[A-Za-z]");
+
+    /** URLs are left as they are: Discord doesn't apply markdown inside links. */
+    private static final Pattern URL = Pattern.compile("https?://\\S+");
+
+    /** Markdown that only takes effect at the start of a line (quote, heading, list, subtext). */
+    private static final Pattern LINE_START_MARKDOWN = Pattern.compile("(?m)^(\\s*)([>#-])");
 
     private final boolean useEmbeds;
     private final boolean useEmojis;
@@ -37,41 +51,62 @@ public class LogFormatter {
     }
 
     /**
-     * Formats log lines as code blocks (legacy format).
+     * Embed descriptions may hold 4096 characters; leave some headroom.
+     */
+    private static final int MAX_DESCRIPTION_LENGTH = 4000;
+
+    private static final String TRUNCATED_MARKER = "*...truncated*";
+
+    /**
+     * Maximum length of a Discord message.
+     */
+    private static final int MAX_MESSAGE_LENGTH = 2000;
+
+    /**
+     * Formats log lines as code blocks, split into as many messages as needed
+     * so no line is dropped. Each message stays within Discord's 2000 character limit.
      *
      * @param lines The log lines to format
-     * @return Formatted string ready for Discord
+     * @return The messages ready for Discord, empty if there is nothing to send
      */
-    public String formatAsCodeBlock(List<String> lines) {
-        if (lines.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder content = new StringBuilder("```");
+    public List<String> formatAsCodeBlocks(List<String> lines) {
+        List<String> messages = new ArrayList<>();
+        // Room for the opening and closing fences
+        int maxContent = MAX_MESSAGE_LENGTH - 6;
+        StringBuilder content = new StringBuilder();
 
         for (String line : lines) {
-            String formattedLine = useEmojis ? addEmojiToLine(line) : line;
+            String plain = stripColorCodes(line);
+            String formattedLine = escapeCodeBlock(useEmojis ? addEmojiToLine(plain) : plain);
 
             // Truncate single lines that could never fit into one message
-            int maxLineLength = 2000 - 6; // opening and closing backticks
-            if (formattedLine.length() > maxLineLength) {
-                formattedLine = formattedLine.substring(0, maxLineLength - 2) + "…\n";
+            if (formattedLine.length() > maxContent) {
+                formattedLine = formattedLine.substring(0, maxContent - 2) + "…\n";
             }
 
-            // Ensure we don't exceed Discord's 2000 char limit
-            if (content.length() + formattedLine.length() + 3 > 2000) {
-                break;
+            if (content.length() + formattedLine.length() > maxContent) {
+                messages.add("```" + content + "```");
+                content.setLength(0);
             }
             content.append(formattedLine);
         }
 
-        // Only backticks left means nothing fit — don't send an empty block
-        if (content.length() == 3) {
-            return "";
+        if (!content.isEmpty()) {
+            messages.add("```" + content + "```");
         }
+        return messages;
+    }
 
-        content.append("```");
-        return content.toString();
+    /**
+     * Formats log lines as a single code block message. Lines that don't fit
+     * into one message are left out; prefer {@link #formatAsCodeBlocks(List)}.
+     *
+     * @param lines The log lines to format
+     * @return The first message, or an empty string if there is nothing to send
+     */
+    public String formatAsCodeBlock(List<String> lines) {
+        List<String> messages = formatAsCodeBlocks(lines);
+        return messages.isEmpty() ? "" : messages.get(0);
     }
 
     /**
@@ -101,10 +136,7 @@ public class LogFormatter {
         List<MessageEmbed> currentGroup = new ArrayList<>();
         int currentGroupSize = 0;
 
-        for (int i = 0; i < entries.size(); i += embedBatchSize) {
-            int end = Math.min(i + embedBatchSize, entries.size());
-            List<LogEntry> batch = entries.subList(i, end);
-
+        for (List<LogEntry> batch : splitIntoBatches(entries)) {
             MessageEmbed embed = createEmbedForBatch(batch).build();
             int embedLength = embed.getLength();
 
@@ -157,6 +189,33 @@ public class LogFormatter {
     }
 
     /**
+     * Splits entries into embed batches of at most embedBatchSize entries whose
+     * text fits into one description, so a long entry (e.g. a stack trace)
+     * starts a new embed instead of pushing the following entries out.
+     */
+    private List<List<LogEntry>> splitIntoBatches(List<LogEntry> entries) {
+        int room = MAX_DESCRIPTION_LENGTH;
+        List<List<LogEntry>> batches = new ArrayList<>();
+        List<LogEntry> batch = new ArrayList<>();
+        int batchChars = 0;
+
+        for (LogEntry entry : entries) {
+            int length = formatEntry(entry).length();
+            if (!batch.isEmpty() && (batch.size() >= embedBatchSize || batchChars + length > room)) {
+                batches.add(batch);
+                batch = new ArrayList<>();
+                batchChars = 0;
+            }
+            batch.add(entry);
+            batchChars += length;
+        }
+        if (!batch.isEmpty()) {
+            batches.add(batch);
+        }
+        return batches;
+    }
+
+    /**
      * Creates an embed for a batch of log entries.
      */
     private EmbedBuilder createEmbedForBatch(List<LogEntry> entries) {
@@ -175,13 +234,17 @@ public class LogFormatter {
         // Add entries as description
         StringBuilder description = new StringBuilder();
         for (LogEntry entry : entries) {
-            String emoji = useEmojis ? getEmojiForLevel(entry.level) : "";
-            String formatted = String.format("%s `%s` %s\n",
-                    emoji, entry.level.name(), entry.message);
+            String formatted = formatEntry(entry);
 
             // Discord embed description limit is 4096
-            if (description.length() + formatted.length() > 4000) {
-                description.append("*...truncated*");
+            if (description.length() + formatted.length() > MAX_DESCRIPTION_LENGTH) {
+                // Only a single oversized entry gets here (see splitIntoBatches):
+                // cut it instead of leaving it out entirely
+                int keep = MAX_DESCRIPTION_LENGTH - description.length() - TRUNCATED_MARKER.length();
+                if (keep > 0) {
+                    description.append(formatted, 0, Math.min(keep, formatted.length()));
+                }
+                description.append(TRUNCATED_MARKER);
                 break;
             }
             description.append(formatted);
@@ -192,16 +255,66 @@ public class LogFormatter {
     }
 
     /**
+     * Formats one entry: level emoji and badge, followed by the full console
+     * line (time, thread and level as in the server log).
+     */
+    private String formatEntry(LogEntry entry) {
+        String emoji = useEmojis ? getEmojiForLevel(entry.level) : "";
+        String text = neutralizeMaskedLinks(escapeMarkdown(stripColorCodes(entry.line)));
+        return String.format("%s `%s` %s\n", emoji, entry.level.name(), text);
+    }
+
+    /**
+     * Removes Minecraft color codes and ANSI sequences, which Discord would
+     * show as raw characters.
+     */
+    static String stripColorCodes(String text) {
+        return COLOR_CODES.matcher(text).replaceAll("");
+    }
+
+    /**
+     * Escapes markdown so the console line is shown literally, e.g.
+     * "dark_oak_button" instead of an italic "oak". URLs are kept intact.
+     */
+    static String escapeMarkdown(String text) {
+        StringBuilder out = new StringBuilder(text.length() + 16);
+        Matcher url = URL.matcher(text);
+        int pos = 0;
+        while (url.find()) {
+            appendEscaped(out, text.substring(pos, url.start()));
+            out.append(url.group());
+            pos = url.end();
+        }
+        appendEscaped(out, text.substring(pos));
+        return LINE_START_MARKDOWN.matcher(out).replaceAll("$1\\\\$2");
+    }
+
+    private static void appendEscaped(StringBuilder out, String text) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\\' || c == '*' || c == '_' || c == '~' || c == '|' || c == '`') {
+                out.append('\\');
+            }
+            out.append(c);
+        }
+    }
+
+    /**
+     * Breaks up "[text](url)" with a zero-width space so log content (e.g.
+     * player chat) can't render as a disguised link. Invisible otherwise.
+     */
+    private static String neutralizeMaskedLinks(String text) {
+        return text.replace("](", "]\u200B(");
+    }
+
+    /**
      * Parses a log line into a LogEntry.
      */
     private LogEntry parseLogLine(String line) {
         Matcher matcher = LOG_LEVEL_PATTERN.matcher(line);
 
         if (matcher.find()) {
-            String levelStr = matcher.group(2);
-            Level level = parseLevel(levelStr);
-            String message = line.substring(matcher.end()).trim();
-            return new LogEntry(level, message);
+            return new LogEntry(parseLevel(matcher.group(2)), line);
         }
 
         return new LogEntry(Level.INFO, line);
@@ -284,10 +397,21 @@ public class LogFormatter {
             String emoji = getEmojiForLevel(level);
 
             // Insert emoji after the level bracket
-            return line.substring(0, matcher.end()) + " " + emoji + " " + line.substring(matcher.end());
+            return line.substring(0, matcher.end()) + " " + emoji + " " + line.substring(matcher.end()).stripLeading();
         }
 
         return line;
+    }
+
+    /**
+     * Breaks up backtick runs so log content (e.g. player chat) cannot close
+     * the surrounding code block and inject formatting or mentions.
+     *
+     * @param text Text that will be placed inside a code block
+     * @return The text with a zero-width space after every backtick
+     */
+    public static String escapeCodeBlock(String text) {
+        return text.replace("`", "`\u200B");
     }
 
     /**
@@ -302,11 +426,12 @@ public class LogFormatter {
      */
     private static class LogEntry {
         final Level level;
-        final String message;
+        /** The full console line as written by the appender (incl. time and thread). */
+        final String line;
 
-        LogEntry(Level level, String message) {
+        LogEntry(Level level, String line) {
             this.level = level;
-            this.message = message;
+            this.line = line;
         }
     }
 }

@@ -2,12 +2,11 @@
 
 A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Minecraft server. Focused on **intelligent console forwarding** with professional monitoring and security features.
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
-[![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
-[![Paper](https://img.shields.io/badge/Paper-26.1.2-green.svg)](https://papermc.io/)
+[![Version](https://img.shields.io/badge/version-2.1.1-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
+[![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/projects/jdk/21/)
+[![Paper](https://img.shields.io/badge/Paper-1.21%20–%2026.x-green.svg)](https://papermc.io/)
 
-> **Branch Info:** This is the `main` branch for Minecraft 26.x (Java 25).
-> For Minecraft 1.21 - 1.21.11 (Java 21), see the [`legacy` branch](https://github.com/BoondockSulfur/ConsoleDiscord/tree/legacy).
+> **One jar for all versions:** the same build runs on Minecraft 1.21.x (Java 21) and 26.x (Java 25).
 
 ---
 
@@ -362,8 +361,8 @@ Status: 🟡 Warning
 
 ## 🚀 Requirements
 
-- **Java 25** or higher
-- **Paper/Spigot/Folia 26.1.2** or higher
+- **Java 21** or higher (Minecraft 26.x itself requires Java 25)
+- **Paper or Folia 1.21 – 26.x** (Spigot is not supported; the plugin uses Paper APIs)
 - **Discord Bot** with Message Content Intent
 
 ### ✨ Folia Support
@@ -376,7 +375,17 @@ This plugin is **fully compatible with Folia**! It automatically detects whether
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### Version 2.1.0 (Current) - Security, Stability & Feature Release
+### Version 2.1.1 (Current) - Bugfix & Compatibility Release
+
+**New in 2.1.1:**
+- 📦 One jar for Minecraft 1.21.x and 26.x (Paper & Folia)
+- 🐛 Embed log mode shows the correct level, the full line incl. time, and the text literally (no markdown, color codes or ANSI sequences)
+- 🐛 Long stack traces no longer cut off the following log lines
+- 🔒 Blocklist also checks server aliases and `execute … run` commands; denied attempts are audited
+- ⚡ Watchdog, reload and auto-cleanup are more robust
+- ✨ Update notice with clickable Modrinth + CurseForge links (in-game for OPs)
+
+### Version 2.1.0 - Security, Stability & Feature Release
 
 **New in 2.1.0:**
 - 🔒 **BREAKING:** Empty `allowed-user-ids`/`allowed-role-ids` lists now mean **nobody** may run Discord commands (was: everyone). Add your Discord user ID or a role ID to keep using `/mc` and `!mc`.

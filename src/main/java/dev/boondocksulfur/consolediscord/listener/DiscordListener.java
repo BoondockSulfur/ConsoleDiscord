@@ -1,8 +1,10 @@
 package dev.boondocksulfur.consolediscord.listener;
 
 import dev.boondocksulfur.consolediscord.ConsoleDiscordPlugin;
+import dev.boondocksulfur.consolediscord.logging.LogFormatter;
 import dev.boondocksulfur.consolediscord.scheduler.SchedulerAdapter;
 import dev.boondocksulfur.consolediscord.security.CommandSecurity;
+import dev.boondocksulfur.consolediscord.security.RateLimiter;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
@@ -32,6 +34,17 @@ import java.util.stream.Collectors;
 public class DiscordListener extends ListenerAdapter {
 
     private final ConsoleDiscordPlugin plugin;
+
+    /**
+     * Limits "wrong channel" / "no permission" replies to !mc to one per user
+     * and minute, so any guild member can't make the bot spam a channel.
+     */
+    private final RateLimiter denialReplyLimiter = new RateLimiter(1, 60);
+
+    /**
+     * Maximum length of a command echoed back in a reply.
+     */
+    private static final int MAX_DISPLAY_LENGTH = 150;
 
     // Common Minecraft commands for autocomplete
     private static final List<String> COMMON_COMMANDS = Arrays.asList(
@@ -100,6 +113,12 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
+        // Suggestions reveal alias targets; only offer them to allowed users
+        if (!plugin.isUserAllowed(event.getUser().getId(), event.getMember())) {
+            event.replyChoices(List.of()).queue();
+            return;
+        }
+
         String userInput = event.getFocusedOption().getValue().toLowerCase();
 
         // Build suggestions list
@@ -159,14 +178,14 @@ public class DiscordListener extends ListenerAdapter {
 
         // Check if user has permission (directly or via a whitelisted role)
         User user = event.getUser();
+        String cmd = event.getOption("command").getAsString();
         if (!plugin.isUserAllowed(user.getId(), event.getMember())) {
+            auditDenied(user.getId(), user.getName(), cmd, "NOT_ALLOWED");
             event.reply(plugin.getMessages().getRaw("discord_command.no_permission"))
                     .setEphemeral(true)
                     .queue();
             return;
         }
-
-        String cmd = event.getOption("command").getAsString();
 
         // Resolve command alias
         final String resolvedCommand = resolveAlias(cmd);
@@ -174,8 +193,9 @@ public class DiscordListener extends ListenerAdapter {
         // Check command security before the rate limit, so a blocked
         // command doesn't consume the user's quota
         if (!CommandSecurity.isSafeCommand(resolvedCommand)) {
+            auditDenied(user.getId(), user.getName(), resolvedCommand, "BLOCKED");
             String baseCommand = CommandSecurity.getBaseCommand(resolvedCommand);
-            event.reply(plugin.getMessages().get("discord_command.blocked", "command", baseCommand))
+            event.reply(plugin.getMessages().get("discord_command.blocked", "command", display(baseCommand)))
                     .setEphemeral(true)
                     .queue();
             return;
@@ -183,6 +203,7 @@ public class DiscordListener extends ListenerAdapter {
 
         // Check rate limit
         if (!plugin.getRateLimiter().allowCommand(user.getId())) {
+            auditDenied(user.getId(), user.getName(), resolvedCommand, "RATE_LIMITED");
             long seconds = plugin.getRateLimiter().getSecondsUntilReset(user.getId());
             int current = plugin.getRateLimiter().getCommandCount(user.getId());
             int max = plugin.getMaxCommandsPerMinute();
@@ -227,21 +248,30 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
+        String userId = event.getAuthor().getId();
+        String username = event.getAuthor().getName();
+
         // Check if command is in correct channel
         String configuredChannel = plugin.getCommandChannelId();
         if (configuredChannel != null && !configuredChannel.isBlank()
                 && !event.getChannel().getId().equals(configuredChannel)) {
-            event.getMessage().reply(plugin.getMessages().getRaw("discord_command.wrong_channel")).queue();
-            return;
-        }
-
-        // Check if user has permission (directly or via a whitelisted role)
-        if (!plugin.isUserAllowed(event.getAuthor().getId(), event.getMember())) {
-            event.getMessage().reply(plugin.getMessages().getRaw("discord_command.no_permission")).queue();
+            if (denialReplyLimiter.allowCommand(userId)) {
+                event.getMessage().reply(plugin.getMessages().getRaw("discord_command.wrong_channel")).queue();
+            }
             return;
         }
 
         String cmd = raw.substring(prefix.length()).trim();
+
+        // Check if user has permission (directly or via a whitelisted role)
+        if (!plugin.isUserAllowed(userId, event.getMember())) {
+            auditDenied(userId, username, cmd, "NOT_ALLOWED");
+            if (denialReplyLimiter.allowCommand(userId)) {
+                event.getMessage().reply(plugin.getMessages().getRaw("discord_command.no_permission")).queue();
+            }
+            return;
+        }
+
         if (cmd.isEmpty()) {
             event.getMessage().reply(plugin.getMessages().getRaw("discord_command.empty")).queue();
             return;
@@ -253,14 +283,15 @@ public class DiscordListener extends ListenerAdapter {
         // Check command security before the rate limit, so a blocked
         // command doesn't consume the user's quota
         if (!CommandSecurity.isSafeCommand(cmd)) {
+            auditDenied(userId, username, cmd, "BLOCKED");
             String baseCommand = CommandSecurity.getBaseCommand(cmd);
-            event.getMessage().reply(plugin.getMessages().get("discord_command.blocked", "command", baseCommand)).queue();
+            event.getMessage().reply(plugin.getMessages().get("discord_command.blocked", "command", display(baseCommand))).queue();
             return;
         }
 
         // Check rate limit
-        String userId = event.getAuthor().getId();
         if (!plugin.getRateLimiter().allowCommand(userId)) {
+            auditDenied(userId, username, cmd, "RATE_LIMITED");
             long seconds = plugin.getRateLimiter().getSecondsUntilReset(userId);
             int current = plugin.getRateLimiter().getCommandCount(userId);
             int max = plugin.getMaxCommandsPerMinute();
@@ -274,7 +305,29 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
-        runMinecraftCommand(cmd, event.getChannel(), false, null, userId, event.getAuthor().getName());
+        runMinecraftCommand(cmd, event.getChannel(), false, null, userId, username);
+    }
+
+    /**
+     * Prepares a command for echoing inside inline code in a reply: no
+     * backticks (they would end the inline code), no line breaks, limited length.
+     */
+    private static String display(String command) {
+        String text = command.replace('`', 'ˋ').replace('\r', ' ').replace('\n', ' ');
+        if (text.length() > MAX_DISPLAY_LENGTH) {
+            text = text.substring(0, MAX_DISPLAY_LENGTH - 1) + "…";
+        }
+        return text;
+    }
+
+    private void auditDenied(String userId, String username, String command, String reason) {
+        if (plugin.getAuditLogger() != null) {
+            try {
+                plugin.getAuditLogger().logDenied(userId, username, command, reason);
+            } catch (Exception ex) {
+                plugin.getLogger().warning("Could not write audit log entry: " + ex.getMessage());
+            }
+        }
     }
 
     /**
@@ -317,6 +370,15 @@ public class DiscordListener extends ListenerAdapter {
             String username
     ) {
         SchedulerAdapter.runGlobal(plugin, () -> {
+            // Re-check on the server thread: the command map can only be read
+            // safely here, and aliases may have changed since the first check.
+            if (!CommandSecurity.isSafeCommand(command)) {
+                auditDenied(userId, username, command, "BLOCKED");
+                sendResponse(slash, slashEvent, channel, plugin.getMessages().get(
+                        "discord_command.blocked", "command", display(CommandSecurity.getBaseCommand(command))));
+                return;
+            }
+
             boolean executed = false;
             List<String> output = Collections.synchronizedList(new ArrayList<>());
             try {
@@ -338,13 +400,17 @@ public class DiscordListener extends ListenerAdapter {
                 executed = true;
 
             } catch (Exception ex) {
-                String msg = plugin.getMessages().get("discord_command.failed", "command", command);
+                String msg = plugin.getMessages().get("discord_command.failed", "command", display(command));
                 sendResponse(slash, slashEvent, channel, msg);
                 plugin.getLogger().warning("Error executing Discord command: " + ex.getMessage());
             } finally {
-                // Log to audit
+                // Log to audit; a failure here must not suppress the reply
                 if (plugin.getAuditLogger() != null) {
-                    plugin.getAuditLogger().logCommand(userId, username, command, executed);
+                    try {
+                        plugin.getAuditLogger().logCommand(userId, username, command, executed);
+                    } catch (Exception ex) {
+                        plugin.getLogger().warning("Could not write audit log entry: " + ex.getMessage());
+                    }
                 }
             }
 
@@ -359,7 +425,7 @@ public class DiscordListener extends ListenerAdapter {
                         () -> sendCommandOutput(command, output, slash, slashEvent, channel),
                         Math.max(1L, plugin.getFeedbackCollectTicks()));
             } else {
-                String msg = plugin.getMessages().get("discord_command.executing", "command", command);
+                String msg = plugin.getMessages().get("discord_command.executing", "command", display(command));
                 sendResponse(slash, slashEvent, channel, msg);
             }
         });
@@ -385,12 +451,14 @@ public class DiscordListener extends ListenerAdapter {
         String msg;
         synchronized (output) {
             if (output.isEmpty()) {
-                msg = plugin.getMessages().get("discord_command.no_output", "command", command);
+                msg = plugin.getMessages().get("discord_command.no_output", "command", display(command));
             } else {
                 StringBuilder sb = new StringBuilder(
-                        plugin.getMessages().get("discord_command.output", "command", command));
+                        plugin.getMessages().get("discord_command.output", "command", display(command)));
                 sb.append("\n```\n");
                 for (String line : output) {
+                    // Output can contain player-controlled text; keep it inside the block
+                    line = LogFormatter.escapeCodeBlock(line);
                     if (line.length() > 400) {
                         line = line.substring(0, 400) + "…";
                     }
@@ -433,7 +501,14 @@ public class DiscordListener extends ListenerAdapter {
                 plugin.getLogger().warning("Could not send response: " + e.getMessage());
             }
         } else {
-            channel.sendMessage(msg).queue();
+            try {
+                channel.sendMessage(msg).queue(
+                        v -> {},
+                        t -> plugin.getLogger().warning("Could not send response: " + t.getMessage())
+                );
+            } catch (Exception e) {
+                plugin.getLogger().warning("Could not send response: " + e.getMessage());
+            }
         }
     }
 }

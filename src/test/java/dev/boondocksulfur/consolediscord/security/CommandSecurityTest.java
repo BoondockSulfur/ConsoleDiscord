@@ -101,4 +101,44 @@ class CommandSecurityTest {
         assertEquals("", CommandSecurity.getBaseCommand("///"));
         assertEquals("", CommandSecurity.getBaseCommand(null));
     }
+
+    @Test
+    void commandsNestedInExecuteAreChecked() {
+        assertFalse(CommandSecurity.isSafeCommand("execute run op Notch"));
+        assertFalse(CommandSecurity.isSafeCommand("execute as @a at @s run stop"));
+        assertFalse(CommandSecurity.isSafeCommand("execute run execute run deop Notch"));
+        assertFalse(CommandSecurity.isSafeCommand("execute run minecraft:say hi"));
+        assertTrue(CommandSecurity.isSafeCommand("execute as @a run say hi"));
+        assertFalse(CommandSecurity.isSafeCommand("return run op Notch"));
+    }
+
+    @Test
+    void serverAliasesResolveToBlockedCommands() {
+        CommandSecurity.setLabelResolver(label -> label.equals("rl") ? "reload" : null);
+        try {
+            assertFalse(CommandSecurity.isSafeCommand("rl confirm"));
+            assertFalse(CommandSecurity.isSafeCommand("execute run rl"));
+            assertTrue(CommandSecurity.isSafeCommand("list"));
+        } finally {
+            CommandSecurity.setLabelResolver(null);
+        }
+    }
+
+    @Test
+    void failingAliasResolutionBlocksTheCommand() {
+        CommandSecurity.setLabelResolver(label -> {
+            throw new IllegalStateException("command map busy");
+        });
+        try {
+            assertFalse(CommandSecurity.isSafeCommand("list"));
+        } finally {
+            CommandSecurity.setLabelResolver(null);
+        }
+    }
+
+    @Test
+    void anyWhitespaceSeparatesTheBaseCommand() {
+        assertFalse(CommandSecurity.isSafeCommand("op\tNotch"));
+        assertEquals("op", CommandSecurity.getBaseCommand("op\nNotch"));
+    }
 }

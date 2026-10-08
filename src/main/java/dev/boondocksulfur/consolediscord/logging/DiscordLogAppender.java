@@ -27,6 +27,11 @@ public class DiscordLogAppender extends AbstractAppender {
     private static final int MAX_QUEUE_LENGTH = 1000;
 
     /**
+     * Package prefix of this plugin and its relocated libraries.
+     */
+    private static final String OWN_PACKAGE_PREFIX = "dev.boondocksulfur.consolediscord.";
+
+    /**
      * Thread-safe queue for storing log messages.
      */
     private final Queue<String> queue = new ConcurrentLinkedQueue<>();
@@ -85,7 +90,13 @@ public class DiscordLogAppender extends AbstractAppender {
     @Override
     public void append(LogEvent event) {
         // Skip the plugin's own log messages to avoid echo/feedback noise.
-        if (excludedLoggerName != null && excludedLoggerName.equals(event.getLoggerName())) {
+        String loggerName = event.getLoggerName();
+        if (excludedLoggerName != null && excludedLoggerName.equals(loggerName)) {
+            return;
+        }
+        // Skip the bundled libraries too (relocated JDA, okhttp, ...): their
+        // rate-limit and reconnect warnings would otherwise feed back into Discord.
+        if (loggerName != null && loggerName.startsWith(OWN_PACKAGE_PREFIX)) {
             return;
         }
 

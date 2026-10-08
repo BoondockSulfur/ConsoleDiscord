@@ -4,6 +4,7 @@ import org.apache.logging.log4j.Level;
 
 import java.util.*;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -62,6 +63,22 @@ public class LogFilter {
     }
 
     /**
+     * Gets the least severe allowed level, i.e. the threshold the log
+     * appender must be registered with so every allowed level reaches it.
+     *
+     * @return The least specific allowed level
+     */
+    public Level getLeastSpecificLevel() {
+        Level result = Level.FATAL;
+        for (Level level : allowedLevels) {
+            if (level.isLessSpecificThan(result)) {
+                result = level;
+            }
+        }
+        return result;
+    }
+
+    /**
      * Gets the category for a log line, or null if it doesn't match any category.
      *
      * @param line The log line
@@ -97,14 +114,12 @@ public class LogFilter {
      */
     private Level extractLevel(String line) {
         // Expected format: "HH:mm:ss [Thread/LEVEL]: message"
-        int levelStart = line.indexOf('/');
-        int levelEnd = line.indexOf(']', levelStart);
-
-        if (levelStart == -1 || levelEnd == -1) {
+        Matcher matcher = LogFormatter.LOG_LEVEL_PATTERN.matcher(line);
+        if (!matcher.find()) {
             return null;
         }
 
-        String levelStr = line.substring(levelStart + 1, levelEnd).trim();
+        String levelStr = matcher.group(2);
 
         return switch (levelStr.toUpperCase()) {
             case "TRACE" -> Level.TRACE;

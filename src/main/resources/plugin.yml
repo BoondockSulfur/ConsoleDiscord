@@ -1,7 +1,7 @@
 name: ConsoleDiscord
 main: dev.boondocksulfur.consolediscord.ConsoleDiscordPlugin
-version: 2.1.0
-api-version: '26.1'
+version: 2.1.1
+api-version: '1.21'
 folia-supported: true
 authors: [ "BoondockSulfur" ]
 load: POSTWORLD
@@ -25,4 +25,7 @@ permissions:
     default: op
   consolediscord.cleanup:
     description: Allows triggering a manual message cleanup
+    default: op
+  consolediscord.update:
+    description: Receives update notifications in-game
     default: op

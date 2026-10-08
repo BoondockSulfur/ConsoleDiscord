@@ -9,8 +9,8 @@ If you get stuck, check the **Troubleshooting** section at the bottom.
 
 ## 1. Requirements
 
-- **Java 21** or higher
-- **Paper / Spigot / Folia 1.21 – 1.21.11**
+- **Java 21** or higher (Minecraft 26.x itself requires Java 25)
+- **Paper / Folia 1.21 – 26.x**
 - A **Discord account** and a server (guild) where you have the *Manage Server*
   permission
 - The plugin JAR placed in your server's `plugins/` folder

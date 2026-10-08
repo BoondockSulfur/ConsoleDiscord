@@ -19,7 +19,11 @@ import java.util.logging.Level;
 public class Messages {
 
     private final Plugin plugin;
-    private final Map<String, String> messages = new HashMap<>();
+    /**
+     * Replaced as a whole on reload, so JDA threads reading concurrently
+     * never see a half-loaded map.
+     */
+    private volatile Map<String, String> messages = Map.of();
     private String language;
 
     public Messages(Plugin plugin, String language) {
@@ -60,14 +64,16 @@ public class Messages {
         }
 
         // Load messages from file
+        Map<String, String> loaded = new HashMap<>();
         if (langFile.exists()) {
             YamlConfiguration config = YamlConfiguration.loadConfiguration(langFile);
             for (String key : config.getKeys(true)) {
                 if (config.isString(key)) {
-                    messages.put(key, config.getString(key));
+                    loaded.put(key, config.getString(key));
                 }
             }
         }
+        messages = loaded;
     }
 
     /**
@@ -134,7 +140,6 @@ public class Messages {
      * Reloads all messages from the language file.
      */
     public void reload(String newLanguage) {
-        messages.clear();
         this.language = newLanguage;
         loadMessages();
     }

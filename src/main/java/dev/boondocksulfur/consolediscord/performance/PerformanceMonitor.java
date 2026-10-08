@@ -25,7 +25,7 @@ public class PerformanceMonitor {
     private final long alertCooldownSeconds;
     private final String logChannelId;
 
-    private JDA jda;
+    private volatile JDA jda;
     private SchedulerAdapter.CancellableTask monitorTask;
 
     private long lastTpsAlert = 0;

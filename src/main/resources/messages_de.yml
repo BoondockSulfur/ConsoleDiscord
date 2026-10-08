@@ -10,6 +10,7 @@ plugin.reloaded: "ConsoleDiscord erfolgreich neu geladen."
 discord.no_token: "Kein gültiger bot-token in config.yml gesetzt! Discord-Integration wird nicht gestartet."
 discord.invalid_token_format: "Bot-Token hat ein ungültiges Format! Bitte überprüfe deinen Token."
 discord.startup_error: "Konnte JDA nicht starten: {error}"
+discord.retry_start: "Discord-Verbindung konnte nicht gestartet werden, neuer Versuch."
 discord.shutdown_warning: "JDA-Shutdown dauerte zu lange, erzwinge shutdownNow()."
 discord.shutdown_interrupted: "Shutdown wurde unterbrochen."
 discord.slash_registered: "Slash-Command /mc bei Discord registriert."
@@ -41,7 +42,7 @@ discord_command.output: "📤 Ausgabe von `{command}`:"
 discord_command.no_output: "✅ Befehl `{command}` ausgeführt (keine Ausgabe)."
 
 # Logging
-log.no_permission: "Keine Rechte im Log-Channel. Stoppe Log-Task."
+log.channel_paused: "Keine Rechte im Channel {id}. Log-Weiterleitung in diesen Channel pausiert bis /cdr reload."
 log.send_failed: "Senden der Log-Nachricht fehlgeschlagen."
 log.appender_register_failed: "Konnte DiscordLogAppender nicht registrieren."
 log.appender_remove_failed: "Fehler beim Entfernen des LogAppenders."
@@ -69,7 +70,7 @@ status.channel_invalid: "{id} (nicht gefunden!)"
 status.not_set: "nicht gesetzt"
 status.log_queue: "Log-Warteschlange: {count} wartende Nachricht(en)"
 status.whitelist: "Whitelist: {users} Nutzer, {roles} Rolle(n)"
-status.update_available: "Update verfügbar: {version} (siehe Modrinth)"
+status.update_available: "Update verfügbar: {version} (Modrinth / CurseForge)"
 
 # Security
 security.commands_blocked: "{count} Befehle blockiert: {commands}"
@@ -92,8 +93,6 @@ notification.update_description: "Eine neue Version von ConsoleDiscord ist verf�
 notification.current_version: "Aktuelle Version"
 notification.latest_version: "Neueste Version"
 notification.download: "Download"
-notification.download_link: "Hier klicken zum Herunterladen"
-notification.update_footer: "Update über Modrinth"
 
 # Performance-Warnungen
 performance.tps_title: "⚠️ Niedrige TPS-Warnung"
@@ -111,3 +110,12 @@ performance.memory_status: "Status"
 performance.memory_critical: "🔴 Kritisch"
 performance.memory_warning: "🟡 Warnung"
 performance.footer: "Performance-Monitor"
+
+# Update-Prüfung
+update.console_available: "Eine neue Version von ConsoleDiscord ist verfügbar: {latest} (installiert: {current})"
+update.console_links: "Download: Modrinth {modrinth} | CurseForge {curseforge}"
+update.console_latest: "Du verwendest die neueste Version ({current})"
+update.console_no_compatible: "Keine kompatible Version auf Modrinth für Minecraft {mc} gefunden"
+update.console_failed: "Update-Prüfung fehlgeschlagen: {error}"
+update.ingame_available: "Eine neue Version ist verfügbar: {current} → {latest}"
+update.ingame_hover: "{url} öffnen"

@@ -3,6 +3,7 @@ package dev.boondocksulfur.consolediscord.security;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Handles security checks for commands executed from Discord.
@@ -32,6 +33,14 @@ public class CommandSecurity {
     private static final AtomicBoolean securityEnabled = new AtomicBoolean(true);
 
     /**
+     * Resolves a command label to the command's primary name, so aliases
+     * registered on the server ("rl" for "reload") hit the same blocklist
+     * entry. Returns null for unknown labels. Default: no resolution.
+     */
+    private static final AtomicReference<Function<String, String>> labelResolver =
+            new AtomicReference<>(label -> null);
+
+    /**
      * Loads command security settings from configuration.
      *
      * @param enabled Whether command security is enabled
@@ -49,6 +58,15 @@ public class CommandSecurity {
             }
             blockedCommands.set(Collections.unmodifiableSet(newSet));
         }
+    }
+
+    /**
+     * Sets the resolver used to map command aliases to their primary name.
+     *
+     * @param resolver Maps a lower-case label to the primary command name, or null if unknown
+     */
+    public static void setLabelResolver(Function<String, String> resolver) {
+        labelResolver.set(resolver != null ? resolver : label -> null);
     }
 
     /**
@@ -70,11 +88,43 @@ public class CommandSecurity {
             return false;
         }
 
+        // "execute ... run <command>" and "return run <command>" execute the
+        // nested command, so every nested command has to pass the same checks.
+        if (baseCommand.equals("execute") || baseCommand.equals("return")) {
+            String[] tokens = normalize(command).split("\\s+");
+            for (int i = 1; i < tokens.length - 1; i++) {
+                if (tokens[i].equals("run")
+                        && !isSafeCommand(String.join(" ", Arrays.copyOfRange(tokens, i + 1, tokens.length)))) {
+                    return false;
+                }
+            }
+        }
+
         if (!securityEnabled.get()) {
             return true;
         }
 
-        return !blockedCommands.get().contains(baseCommand);
+        Set<String> blocked = blockedCommands.get();
+        if (blocked.contains(baseCommand)) {
+            return false;
+        }
+
+        String primaryName;
+        try {
+            primaryName = labelResolver.get().apply(baseCommand);
+        } catch (RuntimeException e) {
+            // Fail closed: if the alias can't be resolved, don't risk a bypass.
+            return false;
+        }
+        return primaryName == null || !blocked.contains(primaryName.toLowerCase(Locale.ROOT));
+    }
+
+    private static String normalize(String command) {
+        String normalized = command.trim().toLowerCase(Locale.ROOT);
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        return normalized;
     }
 
     /**
@@ -88,14 +138,11 @@ public class CommandSecurity {
         if (command == null || command.trim().isEmpty()) {
             return "";
         }
-        String normalized = command.trim().toLowerCase(Locale.ROOT);
-        while (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
+        String normalized = normalize(command);
         if (normalized.isEmpty()) {
             return "";
         }
-        return normalized.split(" ")[0];
+        return normalized.split("\\s+")[0];
     }
 
     /**

@@ -4,6 +4,7 @@ import dev.boondocksulfur.consolediscord.scheduler.SchedulerAdapter;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.utils.TimeUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 
@@ -22,7 +23,7 @@ public class MessageCleanup {
     private final int cleanupAfterDays;
     private final long checkIntervalHours;
 
-    private JDA jda;
+    private volatile JDA jda;
     private SchedulerAdapter.CancellableTask cleanupTask;
     private String logChannelId;
 
@@ -110,9 +111,12 @@ public class MessageCleanup {
      */
     private void cleanupChannel(TextChannel channel, OffsetDateTime cutoff) {
         try {
-            // Retrieve messages in batches
+            // Start the history at the cutoff: the newest messages are never
+            // old enough, so in a busy channel they would use up the batch.
+            long cutoffId = TimeUtil.getDiscordTimestamp(cutoff.toInstant().toEpochMilli());
             channel.getIterableHistory()
-                    .takeAsync(1000) // Max 1000 messages per cleanup
+                    .skipTo(cutoffId)
+                    .takeAsync(1000) // Max 1000 messages per cleanup, the next run continues
                     .thenAccept(messages -> {
                         var selfUser = jda.getSelfUser();
                         // Discord bulk delete only accepts messages younger than 14 days;

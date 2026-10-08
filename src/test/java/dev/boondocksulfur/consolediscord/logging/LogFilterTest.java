@@ -99,4 +99,21 @@ class LogFilterTest {
 
         assertNull(filter.getCategory("12:00:00 [Server thread/INFO]: Banned player Notch"));
     }
+
+    @Test
+    void leastSpecificLevelFollowsConfiguration() {
+        assertEquals(org.apache.logging.log4j.Level.INFO,
+                filter(List.of("INFO", "WARN", "ERROR"), List.of()).getLeastSpecificLevel());
+        assertEquals(org.apache.logging.log4j.Level.DEBUG,
+                filter(List.of("DEBUG", "ERROR"), List.of()).getLeastSpecificLevel());
+        assertEquals(org.apache.logging.log4j.Level.TRACE,
+                filter(List.of(), List.of()).getLeastSpecificLevel());
+    }
+
+    @Test
+    void levelIsFoundForThreadNamesWithSlashes() {
+        LogFilter filter = filter(List.of("WARN"), List.of());
+        assertTrue(filter.shouldSendLog("23:46:20 [RCON Client /0:0:0:0:0:0:0:1 #2/WARN]: x"));
+        assertFalse(filter.shouldSendLog("23:46:20 [RCON Client /0:0:0:0:0:0:0:1 #2/INFO]: x"));
+    }
 }

@@ -94,6 +94,10 @@ command-security:
     - "ban-ip"
   # Note: ALL namespaced commands (minecraft:op, essentials:op, anyplugin:cmd)
   # are ALWAYS blocked, so the blocklist cannot be bypassed via namespaces.
+  # Aliases registered on the server ("rl" for "reload") and commands nested
+  # in "execute ... run <command>" / "return run <command>" are checked against this list as well.
+  # Commands that run other commands for someone else (e.g. "sudo") are not
+  # inspected - block them here if your server has them.
 
 # Command feedback - Reply on Discord with the actual command output
 command-feedback:
@@ -148,9 +152,9 @@ notifications:
 
 auto-cleanup:
   enabled: false
-  # Messages older than X days will be deleted
+  # Messages older than X days will be deleted (minimum 1)
   cleanup-after-days: 7
-  # Cleanup check interval in hours
+  # Cleanup check interval in hours (minimum 1)
   check-interval-hours: 24
 
 # ===== UPDATE CHECKER =====
