@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.2.0] - 2026-11-08 — Security & Stability Release
+
+### Security
+- Optional allowlist mode (`command-security.mode: allowlist`, `allowed-commands`).
+- Optional command lists per role and user (`command-permissions`), also applied to nested commands and aliases.
+- Aliases from `commands.yml` are expanded and checked, including `$1-` pass-through aliases.
+- `/mc` is only visible to administrators by default (`slash-command-admin-only`).
+- Denied attempts are written to the audit log at most 3 times per user and minute, so spam can't rotate real entries away.
+- The audit log keeps numbered backups (`command-audit.max-backups`, default 5) instead of a single `.old` file.
+
+### Added
+- Optional public `/mc` results (`command-feedback.public-replies`, default off).
+
+### Fixed
+- Log levels and ignore patterns are applied before buffering, so filtered lines no longer push out real ones during a log flood.
+- Example IDs from the default config count as "not set" (no more "invalid channel" warnings on new installs).
+- Missing Message Content Intent (error 4014): the bot reconnects without it (logs and `/mc` keep working, `!mc` is disabled) and explains how to enable it; permanent connection errors and a rejected bot token no longer cause a restart every two minutes.
+- Log floods no longer pile up in an unbounded Discord request queue; dropped lines are reported once.
+- Category channels work without a main log channel; the last console lines are sent on shutdown.
+- Memory alerts only fire when usage stays above the threshold for a minute (no false alarms from uncollected garbage).
+- `/cdr reload` and server shutdown no longer wait for a Discord reconnect; the startup notice is no longer skipped.
+- Auto-cleanup continues where it stopped instead of rereading the same messages, cleans category channels too and doesn't run twice at once.
+- Autocomplete no longer fails for inputs or alias names longer than 100 characters.
+- Backticks in URLs can no longer break the embed formatting.
+
+---
+
 ## [2.1.1] - 2026-10-08 — Bugfix & Compatibility Release
 
 ### Security

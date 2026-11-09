@@ -32,6 +32,11 @@ public class PerformanceMonitor {
     private long lastMemoryAlert = 0;
 
     /**
+     * Memory usage samples of the last minute (one every 5 seconds).
+     */
+    private final MemoryWindow memoryWindow = new MemoryWindow(12);
+
+    /**
      * Creates a new performance monitor.
      *
      * @param plugin The plugin instance
@@ -113,9 +118,13 @@ public class PerformanceMonitor {
             }
         }
 
-        // Check Memory
+        // Check Memory: the current value includes garbage not yet collected
+        // and regularly exceeds 90 % on a healthy G1 heap. Only alert when
+        // usage stayed above the threshold for a whole minute, i.e. garbage
+        // collection couldn't bring it down.
         int memoryPercent = getMemoryUsagePercent();
-        if (memoryPercent >= highMemoryThreshold) {
+        memoryWindow.add(memoryPercent);
+        if (memoryWindow.isFull() && memoryWindow.minimum() >= highMemoryThreshold) {
             long now = System.currentTimeMillis() / 1000;
             if (now - lastMemoryAlert >= alertCooldownSeconds) {
                 sendMemoryAlert(memoryPercent);
@@ -225,6 +234,37 @@ public class PerformanceMonitor {
                 v -> {},
                 error -> plugin.getLogger().warning("Could not send memory alert: " + error.getMessage())
         );
+    }
+
+    /**
+     * Fixed-size window of the most recent memory samples.
+     */
+    static final class MemoryWindow {
+        private final int[] samples;
+        private int next = 0;
+        private int count = 0;
+
+        MemoryWindow(int size) {
+            this.samples = new int[size];
+        }
+
+        void add(int sample) {
+            samples[next] = sample;
+            next = (next + 1) % samples.length;
+            count = Math.min(count + 1, samples.length);
+        }
+
+        boolean isFull() {
+            return count == samples.length;
+        }
+
+        int minimum() {
+            int min = Integer.MAX_VALUE;
+            for (int i = 0; i < count; i++) {
+                min = Math.min(min, samples[i]);
+            }
+            return min;
+        }
     }
 
     /**

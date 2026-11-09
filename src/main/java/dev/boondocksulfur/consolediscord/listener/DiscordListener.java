@@ -15,6 +15,7 @@ import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.InteractionContextType;
 import net.dv8tion.jda.api.interactions.commands.Command;
+import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
@@ -45,6 +46,11 @@ public class DiscordListener extends ListenerAdapter {
      * Maximum length of a command echoed back in a reply.
      */
     private static final int MAX_DISPLAY_LENGTH = 150;
+
+    /**
+     * Discord limit for autocomplete choice names and values.
+     */
+    private static final int MAX_CHOICE_LENGTH = 100;
 
     // Common Minecraft commands for autocomplete
     private static final List<String> COMMON_COMMANDS = Arrays.asList(
@@ -92,6 +98,13 @@ public class DiscordListener extends ListenerAdapter {
                 .setContexts(InteractionContextType.GUILD) // no DMs — channel restriction must be able to apply
                 .addOption(OptionType.STRING, "command", "The Minecraft command without slash", true, true); // Autocomplete enabled
 
+        // Hidden by default: only administrators see /mc until the server
+        // grants it to roles under Server Settings > Integrations.
+        // The plugin's own whitelist check applies either way.
+        if (plugin.isSlashCommandAdminOnly()) {
+            mc.setDefaultPermissions(DefaultMemberPermissions.DISABLED);
+        }
+
         event.getJDA().updateCommands().addCommands(mc).queue(
                 v -> plugin.getLogger().info(plugin.getMessages().getRaw("discord.slash_registered")),
                 t -> plugin.getLogger().warning(plugin.getMessages().get("discord.slash_failed", "error", t.getMessage()))
@@ -119,7 +132,7 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
-        String userInput = event.getFocusedOption().getValue().toLowerCase();
+        String userInput = event.getFocusedOption().getValue().toLowerCase(Locale.ROOT);
 
         // Build suggestions list
         List<Command.Choice> choices = new ArrayList<>();
@@ -127,11 +140,11 @@ public class DiscordListener extends ListenerAdapter {
         // Add command aliases first
         Map<String, String> aliases = plugin.getCommandAliases();
         for (Map.Entry<String, String> entry : aliases.entrySet()) {
-            if (entry.getKey().toLowerCase().startsWith(userInput)) {
+            // Choice values are limited to 100 chars; longer alias names can't be offered
+            if (entry.getKey().length() <= MAX_CHOICE_LENGTH && entry.getKey().startsWith(userInput)) {
                 String display = entry.getKey() + " → " + entry.getValue();
-                // Discord choice names are limited to 100 chars
-                if (display.length() > 100) {
-                    display = display.substring(0, 97) + "...";
+                if (display.length() > MAX_CHOICE_LENGTH) {
+                    display = display.substring(0, MAX_CHOICE_LENGTH - 3) + "...";
                 }
                 choices.add(new Command.Choice(display, entry.getKey()));
             }
@@ -139,13 +152,13 @@ public class DiscordListener extends ListenerAdapter {
 
         // Add common commands
         for (String cmd : COMMON_COMMANDS) {
-            if (cmd.toLowerCase().startsWith(userInput) && choices.size() < 25) {
+            if (cmd.startsWith(userInput) && choices.size() < 25) {
                 choices.add(new Command.Choice(cmd, cmd));
             }
         }
 
         // If no matches, suggest the input as-is
-        if (choices.isEmpty() && !userInput.isBlank()) {
+        if (choices.isEmpty() && !userInput.isBlank() && userInput.length() <= MAX_CHOICE_LENGTH) {
             choices.add(new Command.Choice(userInput, userInput));
         }
 
@@ -190,9 +203,10 @@ public class DiscordListener extends ListenerAdapter {
         // Resolve command alias
         final String resolvedCommand = resolveAlias(cmd);
 
-        // Check command security before the rate limit, so a blocked
-        // command doesn't consume the user's quota
-        if (!CommandSecurity.isSafeCommand(resolvedCommand)) {
+        // Quick security check before the rate limit, so a blocked command
+        // doesn't consume the user's quota. The full check (server aliases)
+        // needs the command map and runs on the server thread.
+        if (!CommandSecurity.passesPreCheck(resolvedCommand)) {
             auditDenied(user.getId(), user.getName(), resolvedCommand, "BLOCKED");
             String baseCommand = CommandSecurity.getBaseCommand(resolvedCommand);
             event.reply(plugin.getMessages().get("discord_command.blocked", "command", display(baseCommand)))
@@ -217,9 +231,11 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
-        // Defer reply to prevent timeout
-        event.deferReply(true).queue(
-                v -> runMinecraftCommand(resolvedCommand, event.getChannel(), true, event, user.getId(), user.getName()),
+        // Defer reply to prevent timeout; private unless public replies are enabled
+        Set<String> permitted = plugin.getPermittedCommands(user.getId(), event.getMember());
+        event.deferReply(!plugin.isPublicReplies()).queue(
+                v -> runMinecraftCommand(resolvedCommand, event.getChannel(), true, event,
+                        user.getId(), user.getName(), permitted),
                 t -> plugin.getLogger().warning("Could not defer interaction: " + t.getMessage())
         );
     }
@@ -280,9 +296,8 @@ public class DiscordListener extends ListenerAdapter {
         // Resolve command alias
         cmd = resolveAlias(cmd);
 
-        // Check command security before the rate limit, so a blocked
-        // command doesn't consume the user's quota
-        if (!CommandSecurity.isSafeCommand(cmd)) {
+        // Quick security check before the rate limit (full check on the server thread)
+        if (!CommandSecurity.passesPreCheck(cmd)) {
             auditDenied(userId, username, cmd, "BLOCKED");
             String baseCommand = CommandSecurity.getBaseCommand(cmd);
             event.getMessage().reply(plugin.getMessages().get("discord_command.blocked", "command", display(baseCommand))).queue();
@@ -305,7 +320,8 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
-        runMinecraftCommand(cmd, event.getChannel(), false, null, userId, username);
+        runMinecraftCommand(cmd, event.getChannel(), false, null, userId, username,
+                plugin.getPermittedCommands(userId, event.getMember()));
     }
 
     /**
@@ -337,18 +353,25 @@ public class DiscordListener extends ListenerAdapter {
      * @return The resolved command
      */
     private String resolveAlias(String command) {
-        Map<String, String> aliases = plugin.getCommandAliases();
+        return resolveAlias(plugin.getCommandAliases(), command);
+    }
 
-        // Check if the command starts with an alias
-        for (Map.Entry<String, String> entry : aliases.entrySet()) {
-            String alias = entry.getKey();
-            if (command.equalsIgnoreCase(alias) || command.toLowerCase().startsWith(alias + " ")) {
-                // Replace alias with actual command
-                return entry.getValue() + command.substring(alias.length());
-            }
+    /**
+     * Replaces a leading alias with its target command.
+     *
+     * @param aliases Alias map with lower-case keys
+     * @param command The command as typed
+     * @return The command with the alias replaced, or the command unchanged
+     */
+    static String resolveAlias(Map<String, String> aliases, String command) {
+        String trimmed = command.trim();
+        int space = trimmed.indexOf(' ');
+        String first = (space < 0 ? trimmed : trimmed.substring(0, space)).toLowerCase(Locale.ROOT);
+        String target = aliases.get(first);
+        if (target == null) {
+            return command;
         }
-
-        return command;
+        return space < 0 ? target : target + trimmed.substring(space);
     }
 
     /**
@@ -360,6 +383,7 @@ public class DiscordListener extends ListenerAdapter {
      * @param slashEvent The slash command event (if applicable)
      * @param userId The Discord user ID
      * @param username The Discord username
+     * @param permitted Commands this user may run ("*" = all), or null without per-role limits
      */
     private void runMinecraftCommand(
             String command,
@@ -367,15 +391,22 @@ public class DiscordListener extends ListenerAdapter {
             boolean slash,
             SlashCommandInteractionEvent slashEvent,
             String userId,
-            String username
+            String username,
+            Set<String> permitted
     ) {
         SchedulerAdapter.runGlobal(plugin, () -> {
-            // Re-check on the server thread: the command map can only be read
-            // safely here, and aliases may have changed since the first check.
+            // Full check on the server thread: the command map (server aliases)
+            // can only be read safely here, and aliases may have changed since.
             if (!CommandSecurity.isSafeCommand(command)) {
                 auditDenied(userId, username, command, "BLOCKED");
                 sendResponse(slash, slashEvent, channel, plugin.getMessages().get(
                         "discord_command.blocked", "command", display(CommandSecurity.getBaseCommand(command))));
+                return;
+            }
+            if (permitted != null && !CommandSecurity.isSafeCommand(command, permitted)) {
+                auditDenied(userId, username, command, "NOT_PERMITTED");
+                sendResponse(slash, slashEvent, channel, plugin.getMessages().get(
+                        "discord_command.not_permitted", "command", display(CommandSecurity.getBaseCommand(command))));
                 return;
             }
 
@@ -493,7 +524,7 @@ public class DiscordListener extends ListenerAdapter {
             }
             try {
                 // Use hook since we already called deferReply()
-                slashEvent.getHook().sendMessage(msg).setEphemeral(true).queue(
+                slashEvent.getHook().sendMessage(msg).setEphemeral(!plugin.isPublicReplies()).queue(
                         v -> {},
                         t -> plugin.getLogger().warning("Could not send response: " + t.getMessage())
                 );

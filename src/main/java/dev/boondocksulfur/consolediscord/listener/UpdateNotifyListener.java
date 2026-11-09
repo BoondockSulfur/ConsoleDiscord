@@ -1,6 +1,6 @@
 package dev.boondocksulfur.consolediscord.listener;
 
-import dev.boondocksulfur.consolediscord.ConsoleDiscordPlugin;
+import dev.boondocksulfur.consolediscord.updater.UpdateNotifier;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -11,19 +11,19 @@ import org.bukkit.event.player.PlayerJoinEvent;
  */
 public class UpdateNotifyListener implements Listener {
 
-    private final ConsoleDiscordPlugin plugin;
+    private final UpdateNotifier notifier;
 
     /**
      * Creates a new update notification listener.
      *
-     * @param plugin The plugin instance
+     * @param notifier The update notifier
      */
-    public UpdateNotifyListener(ConsoleDiscordPlugin plugin) {
-        this.plugin = plugin;
+    public UpdateNotifyListener(UpdateNotifier notifier) {
+        this.notifier = notifier;
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
-        plugin.sendUpdateMessage(event.getPlayer());
+        notifier.notifyPlayer(event.getPlayer());
     }
 }

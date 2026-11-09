@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
  * between incompatible builds (e.g. Java 21 vs Java 25).
  *
  * @author BoondockSulfur
- * @version 2.1.1
+ * @version 2.2.0
  */
 public class ModrinthUpdateChecker {
 
@@ -59,7 +59,7 @@ public class ModrinthUpdateChecker {
      * @param plugin The plugin instance
      */
     public ModrinthUpdateChecker(Plugin plugin) {
-        this.currentVersion = plugin.getDescription().getVersion();
+        this.currentVersion = plugin.getPluginMeta().getVersion();
         this.minecraftVersion = Bukkit.getMinecraftVersion();
     }
 

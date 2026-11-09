@@ -34,12 +34,19 @@ public class AuditLogger {
     private final boolean logToDiscord;
     private final String auditChannelId;
     private final long maxFileBytes;
+    private final int maxBackups;
     private final ExecutorService writeExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "ConsoleDiscord-AuditWriter");
         t.setDaemon(true);
         return t;
     });
     private volatile JDA jda;
+
+    /**
+     * Denied attempts can be triggered by any guild member; at most 3 per
+     * user and minute are written, the rest is counted.
+     */
+    private final DenialThrottle denialThrottle = new DenialThrottle(3, 60);
 
     /**
      * Creates a new audit logger.
@@ -49,14 +56,16 @@ public class AuditLogger {
      * @param logToDiscord Whether to also log to Discord
      * @param auditChannelId Discord channel ID for audit logs
      * @param maxFileSizeMb Rotate the log file when it exceeds this size (0 = never)
+     * @param maxBackups Number of rotated files to keep (audit.log.1 … audit.log.N), at least 1
      */
     public AuditLogger(Plugin plugin, String logFileName, boolean logToDiscord, String auditChannelId,
-                       long maxFileSizeMb) {
+                       long maxFileSizeMb, int maxBackups) {
         this.plugin = plugin;
         this.logFile = new File(plugin.getDataFolder(), logFileName);
         this.logToDiscord = logToDiscord;
         this.auditChannelId = auditChannelId;
         this.maxFileBytes = maxFileSizeMb * 1024L * 1024L;
+        this.maxBackups = Math.max(1, maxBackups);
 
         // Create log file if it doesn't exist
         if (!logFile.exists()) {
@@ -100,7 +109,15 @@ public class AuditLogger {
      * @param reason Short reason, e.g. "NOT_ALLOWED", "BLOCKED", "RATE_LIMITED"
      */
     public void logDenied(String userId, String username, String command, String reason) {
-        log(userId, username, command, "DENIED: " + reason, false);
+        int suppressedBefore = denialThrottle.tryAcquire(userId);
+        if (suppressedBefore < 0) {
+            return;
+        }
+        String status = "DENIED: " + reason;
+        if (suppressedBefore > 0) {
+            status += ", " + suppressedBefore + " earlier attempts not logged";
+        }
+        log(userId, username, command, status, false);
     }
 
     private void log(String userId, String username, String command, String status, boolean success) {
@@ -140,20 +157,37 @@ public class AuditLogger {
 
     /**
      * Rotates the audit log when it grows past the configured size limit:
-     * the current file is renamed to "<name>.old" (replacing a previous
-     * backup) so the log never grows unbounded. Runs on the writer thread.
+     * audit.log becomes audit.log.1, older backups move up by one and the
+     * oldest beyond maxBackups is deleted. Runs on the writer thread.
      */
     private void rotateIfNeeded() {
         if (maxFileBytes <= 0 || logFile.length() < maxFileBytes) {
             return;
         }
         try {
-            File backup = new File(logFile.getParentFile(), logFile.getName() + ".old");
-            if (backup.exists() && !backup.delete()) {
-                plugin.getLogger().warning("Could not delete old audit log backup: " + backup.getName());
+            File dir = logFile.getParentFile();
+            String name = logFile.getName();
+
+            // Single backup of versions before 2.2.0 joins the numbered ones
+            File legacy = new File(dir, name + ".old");
+            File first = new File(dir, name + ".1");
+            if (legacy.exists() && !first.exists() && !legacy.renameTo(first)) {
+                plugin.getLogger().warning("Could not rename old audit log backup: " + legacy.getName());
+            }
+
+            File oldest = new File(dir, name + "." + maxBackups);
+            if (oldest.exists() && !oldest.delete()) {
+                plugin.getLogger().warning("Could not delete old audit log backup: " + oldest.getName());
                 return;
             }
-            if (!logFile.renameTo(backup)) {
+            for (int i = maxBackups - 1; i >= 1; i--) {
+                File from = new File(dir, name + "." + i);
+                if (from.exists() && !from.renameTo(new File(dir, name + "." + (i + 1)))) {
+                    plugin.getLogger().warning("Could not rotate audit log backup: " + from.getName());
+                    return;
+                }
+            }
+            if (!logFile.renameTo(first)) {
                 plugin.getLogger().warning("Could not rotate audit log file");
             }
         } catch (Exception e) {

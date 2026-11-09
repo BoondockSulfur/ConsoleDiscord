@@ -70,8 +70,7 @@ log-categories:
     security:
       - ".*Banned player.*"
       - ".*UUID mismatch.*"
-      - ".*issued server command.*op.*"
-      - ".*issued server command.*deop.*"
+      - "issued server command: /(op|deop)\\b"
     performance:
       - ".*Can't keep up.*"
       - ".*Server tick.*"
@@ -83,6 +82,17 @@ log-categories:
 command-security:
   # Enable security system
   enabled: true
+  # "blocklist": every command except those in blocked-commands is allowed.
+  # "allowlist": only commands in allowed-commands are allowed (safer: a
+  #   blocklist can never list every dangerous plugin command).
+  mode: "blocklist"
+  # Only used in allowlist mode. Base command names, e.g. "list", "tps", "whitelist".
+  allowed-commands: []
+  # Hide /mc in Discord for everyone except administrators. Grant it to
+  # roles under Server Settings > Integrations > <bot>. The plugin's own
+  # allowed-user-ids / allowed-role-ids check applies either way, and !mc
+  # is not affected by this setting.
+  slash-command-admin-only: true
   # Commands that should be blocked (list is customizable)
   # You can add more like: whitelist, ban, kick, execute, etc.
   blocked-commands:
@@ -94,8 +104,9 @@ command-security:
     - "ban-ip"
   # Note: ALL namespaced commands (minecraft:op, essentials:op, anyplugin:cmd)
   # are ALWAYS blocked, so the blocklist cannot be bypassed via namespaces.
-  # Aliases registered on the server ("rl" for "reload") and commands nested
-  # in "execute ... run <command>" / "return run <command>" are checked against this list as well.
+  # Aliases registered on the server ("rl" for "reload"), aliases from
+  # commands.yml and commands nested in "execute ... run <command>" /
+  # "return run <command>" are checked against this list as well.
   # Commands that run other commands for someone else (e.g. "sudo") are not
   # inspected - block them here if your server has them.
 
@@ -106,6 +117,25 @@ command-feedback:
   enabled: true
   # How long to collect output before replying (in ticks, 20 = 1 second)
   collect-ticks: 20
+  # Show /mc results to the whole channel instead of only the user who ran it.
+  # Early rejections (not whitelisted, rate limited, blocked) stay private;
+  # rejections found by the full check on the server follow this setting.
+  public-replies: false
+
+# Per-user / per-role command lists - which commands a whitelisted user may run
+# (on top of command-security). Users still need to be in allowed-user-ids or
+# have a role from allowed-role-ids. Entries are base commands; "*" = all.
+# A user gets the combined entries of their user ID and all their roles.
+command-permissions:
+  enabled: false
+  # Discord user ID: [commands]
+  users: {}
+  #  "123456789012345678": ["*"]
+  # Discord role ID: [commands]
+  roles: {}
+  #  "987654321098765432": ["list", "tps", "kick"]
+  # Whitelisted users without any matching entry
+  default: ["*"]
 
 # Command aliases - Shortcuts for frequent commands
 command-aliases:
@@ -126,8 +156,9 @@ command-audit:
   # Discord channel for audit logs
   audit-channel-id: ""
   # Rotate the audit log when it exceeds this size in MB (0 = never rotate).
-  # The previous log is kept once as "<name>.old".
   max-file-size-mb: 10
+  # Rotated files kept (audit.log.1 ... audit.log.N)
+  max-backups: 5
 
 # ===== PERFORMANCE ALERTS =====
 

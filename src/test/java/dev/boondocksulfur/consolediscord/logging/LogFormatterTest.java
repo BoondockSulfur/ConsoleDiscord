@@ -26,7 +26,7 @@ class LogFormatterTest {
 
     @Test
     void codeBlockWrapsLinesInBackticks() {
-        String result = plainFormatter().formatAsCodeBlock(List.of(INFO_LINE, ERROR_LINE));
+        String result = plainFormatter().formatAsCodeBlocks(List.of(INFO_LINE, ERROR_LINE)).get(0);
         assertTrue(result.startsWith("```"));
         assertTrue(result.endsWith("```"));
         assertTrue(result.contains("Server started"));
@@ -35,7 +35,7 @@ class LogFormatterTest {
 
     @Test
     void emptyInputProducesEmptyString() {
-        assertEquals("", plainFormatter().formatAsCodeBlock(List.of()));
+        assertTrue(plainFormatter().formatAsCodeBlocks(List.of()).isEmpty());
     }
 
     @Test
@@ -44,14 +44,14 @@ class LogFormatterTest {
         for (int i = 0; i < 100; i++) {
             lines.add("12:00:00 [Server thread/INFO]: " + "x".repeat(80) + "\n");
         }
-        String result = plainFormatter().formatAsCodeBlock(lines);
+        String result = plainFormatter().formatAsCodeBlocks(lines).get(0);
         assertTrue(result.length() <= 2000, "was " + result.length());
     }
 
     @Test
     void oversizedSingleLineIsTruncatedInsteadOfProducingEmptyBlock() {
         String hugeLine = "12:00:00 [Server thread/INFO]: " + "y".repeat(3000) + "\n";
-        String result = plainFormatter().formatAsCodeBlock(List.of(hugeLine));
+        String result = plainFormatter().formatAsCodeBlocks(List.of(hugeLine)).get(0);
         assertFalse(result.isEmpty());
         assertTrue(result.contains("y"));
         assertTrue(result.length() <= 2000, "was " + result.length());
@@ -154,7 +154,7 @@ class LogFormatterTest {
     @Test
     void codeBlockCannotBeClosedByLogContent() {
         String line = "12:00:04 [Async Chat Thread - #0/INFO]: <Steve> ``` @everyone\n";
-        String result = plainFormatter().formatAsCodeBlock(List.of(line));
+        String result = plainFormatter().formatAsCodeBlocks(List.of(line)).get(0);
         String inner = result.substring(3, result.length() - 3);
         assertFalse(inner.contains("```"), inner);
     }
@@ -220,6 +220,12 @@ class LogFormatterTest {
         String url = "https://repo.example/com/google/error_prone_annotations-2.27.0.jar";
         assertEquals("Downloading " + url + " to error\\_prone",
                 LogFormatter.escapeMarkdown("Downloading " + url + " to error_prone"));
+    }
+
+    @Test
+    void backtickEndsUrlAndIsEscaped() {
+        assertEquals("see https://x.example/a\\` rest",
+                LogFormatter.escapeMarkdown("see https://x.example/a` rest"));
     }
 
     @Test

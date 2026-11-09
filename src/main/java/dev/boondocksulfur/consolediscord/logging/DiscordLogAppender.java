@@ -34,12 +34,17 @@ public class DiscordLogAppender extends AbstractAppender {
     /**
      * Thread-safe queue for storing log messages.
      */
-    private final Queue<String> queue = new ConcurrentLinkedQueue<>();
+    private final Queue<LogLine> queue = new ConcurrentLinkedQueue<>();
 
     /**
      * O(1) counter to avoid ConcurrentLinkedQueue.size() which is O(n).
      */
     private final AtomicInteger queueCount = new AtomicInteger(0);
+
+    /**
+     * Lines discarded because the buffer was full, reported once on Discord.
+     */
+    private final AtomicInteger droppedCount = new AtomicInteger(0);
 
     /**
      * Log4j logger name to exclude from forwarding (the plugin's own logger),
@@ -49,6 +54,12 @@ public class DiscordLogAppender extends AbstractAppender {
     private final String excludedLoggerName;
 
     /**
+     * Applied before buffering, so filtered lines don't take buffer slots
+     * from real ones during a log flood. May be {@code null}.
+     */
+    private final LogFilter filter;
+
+    /**
      * Creates a new Discord log appender.
      *
      * @param name The name of the appender
@@ -56,14 +67,17 @@ public class DiscordLogAppender extends AbstractAppender {
      * @param layout Layout for formatting log messages
      * @param ignoreExceptions Whether to ignore exceptions during logging
      * @param excludedLoggerName Logger name to skip, or null to forward everything
+     * @param logFilter Level and ignore filter applied before buffering, or null
      */
     protected DiscordLogAppender(String name,
                                  Filter filter,
                                  Layout<? extends Serializable> layout,
                                  boolean ignoreExceptions,
-                                 String excludedLoggerName) {
+                                 String excludedLoggerName,
+                                 LogFilter logFilter) {
         super(name, filter, layout, ignoreExceptions, Property.EMPTY_ARRAY);
         this.excludedLoggerName = excludedLoggerName;
+        this.filter = logFilter;
     }
 
     /**
@@ -75,10 +89,22 @@ public class DiscordLogAppender extends AbstractAppender {
      * @return A new DiscordLogAppender instance
      */
     public static DiscordLogAppender create(String name, String excludedLoggerName) {
+        return create(name, excludedLoggerName, null);
+    }
+
+    /**
+     * Factory method with a filter that is applied before buffering.
+     *
+     * @param name The name of the appender
+     * @param excludedLoggerName Logger name to skip, or null
+     * @param logFilter Level and ignore filter, or null to buffer everything
+     * @return A new DiscordLogAppender instance
+     */
+    public static DiscordLogAppender create(String name, String excludedLoggerName, LogFilter logFilter) {
         PatternLayout layout = PatternLayout.newBuilder()
                 .withPattern("%d{HH:mm:ss} [%t/%p]: %msg%n")
                 .build();
-        return new DiscordLogAppender(name, null, layout, true, excludedLoggerName);
+        return new DiscordLogAppender(name, null, layout, true, excludedLoggerName, logFilter);
     }
 
     /**
@@ -100,6 +126,10 @@ public class DiscordLogAppender extends AbstractAppender {
             return;
         }
 
+        if (filter != null && !filter.isLevelAllowed(event.getLevel())) {
+            return;
+        }
+
         Layout<? extends Serializable> layout = getLayout();
         if (layout == null) {
             return;
@@ -111,13 +141,17 @@ public class DiscordLogAppender extends AbstractAppender {
         }
 
         String line = serializable.toString();
-        queue.offer(line);
+        if (filter != null && filter.isIgnored(line)) {
+            return;
+        }
+        queue.offer(new LogLine(event.getLevel(), line));
         int size = queueCount.incrementAndGet();
 
         // Remove oldest messages if queue is full
         while (size > MAX_QUEUE_LENGTH) {
             if (queue.poll() != null) {
                 size = queueCount.decrementAndGet();
+                droppedCount.incrementAndGet();
             } else {
                 break;
             }
@@ -131,10 +165,10 @@ public class DiscordLogAppender extends AbstractAppender {
      * @param maxLines Maximum number of lines to retrieve
      * @return List of log messages
      */
-    public List<String> drain(int maxLines) {
-        List<String> result = new ArrayList<>(maxLines);
+    public List<LogLine> drain(int maxLines) {
+        List<LogLine> result = new ArrayList<>(maxLines);
         for (int i = 0; i < maxLines; i++) {
-            String line = queue.poll();
+            LogLine line = queue.poll();
             if (line == null) {
                 break;
             }
@@ -142,6 +176,15 @@ public class DiscordLogAppender extends AbstractAppender {
             result.add(line);
         }
         return result;
+    }
+
+    /**
+     * Returns the number of lines discarded since the last call and resets it.
+     *
+     * @return Number of dropped lines
+     */
+    public int takeDroppedCount() {
+        return droppedCount.getAndSet(0);
     }
 
     /**

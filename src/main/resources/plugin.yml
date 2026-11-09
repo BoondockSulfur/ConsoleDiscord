@@ -1,6 +1,6 @@
 name: ConsoleDiscord
 main: dev.boondocksulfur.consolediscord.ConsoleDiscordPlugin
-version: 2.1.1
+version: 2.2.0
 api-version: '1.21'
 folia-supported: true
 authors: [ "BoondockSulfur" ]

@@ -39,7 +39,9 @@ enable:
 
 - ✅ **Message Content Intent**
 
-Without this, the prefix command `!mc` and message reading will **not** work.
+Without this, the prefix command `!mc` will **not** work. If it is missing,
+Discord rejects the connection (error 4014); the plugin then reconnects
+without it, so logs and `/mc` keep working, and warns in the console.
 Save your changes.
 
 ---
@@ -168,12 +170,16 @@ See the comments inside `config.yml` for the full list of options.
   token format is reported there.
 
 **`!mc` (prefix command) does nothing**
-- The **Message Content Intent** (step 2.3) is not enabled. Enable it and restart.
+- The **Message Content Intent** (step 2.3) is not enabled. `/cdr status` shows
+  `!mc: off (Message Content Intent missing)`. Enable it, then run `/cdr reload`.
 
 **`/mc` (slash command) does not show up**
 - The bot was invited without the `applications.commands` scope. Re-invite it
   using the URL from step 3.
 - Slash commands can take a minute to register after the bot first connects.
+- By default only administrators see `/mc` (`command-security.slash-command-admin-only`).
+  Grant it to roles under *Server Settings → Integrations → your bot*, or set the
+  option to `false` and run `/cdr reload`.
 
 **"You are not allowed to use this command"**
 - Your Discord User ID is not in `allowed-user-ids`, or the list contains the

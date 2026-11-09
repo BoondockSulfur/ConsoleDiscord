@@ -1,41 +1,31 @@
 package dev.boondocksulfur.consolediscord;
 
 import dev.boondocksulfur.consolediscord.audit.AuditLogger;
+import dev.boondocksulfur.consolediscord.command.CdrCommand;
+import dev.boondocksulfur.consolediscord.config.ConfigMerger;
+import dev.boondocksulfur.consolediscord.discord.DiscordConnection;
+import dev.boondocksulfur.consolediscord.security.CommandPermissions;
 import org.bstats.bukkit.Metrics;
 import dev.boondocksulfur.consolediscord.cleanup.MessageCleanup;
 import dev.boondocksulfur.consolediscord.i18n.Messages;
-import dev.boondocksulfur.consolediscord.listener.DiscordListener;
 import dev.boondocksulfur.consolediscord.listener.UpdateNotifyListener;
 import dev.boondocksulfur.consolediscord.logging.DiscordLogAppender;
 import dev.boondocksulfur.consolediscord.logging.LogFilter;
 import dev.boondocksulfur.consolediscord.logging.LogFormatter;
+import dev.boondocksulfur.consolediscord.logging.LogForwarder;
 import dev.boondocksulfur.consolediscord.performance.PerformanceMonitor;
 import dev.boondocksulfur.consolediscord.scheduler.SchedulerAdapter;
 import dev.boondocksulfur.consolediscord.security.CommandSecurity;
 import dev.boondocksulfur.consolediscord.security.RateLimiter;
 import dev.boondocksulfur.consolediscord.updater.ModrinthUpdateChecker;
+import dev.boondocksulfur.consolediscord.updater.UpdateNotifier;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
-import net.dv8tion.jda.api.JDABuilder;
-import net.dv8tion.jda.api.OnlineStatus;
-import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.dv8tion.jda.api.events.StatusChangeEvent;
-import net.dv8tion.jda.api.exceptions.ErrorResponseException;
-import net.dv8tion.jda.api.exceptions.InsufficientPermissionException;
-import net.dv8tion.jda.api.requests.ErrorResponse;
-import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.requests.GatewayIntent;
-import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.utils.messages.MessageRequest;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.event.ClickEvent;
-import net.kyori.adventure.text.event.HoverEvent;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -43,20 +33,16 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import org.jetbrains.annotations.NotNull;
 
 import java.awt.Color;
 import java.time.Duration;
@@ -68,61 +54,45 @@ import java.util.*;
  * Integrates Discord with a Minecraft server, allowing log forwarding and remote command execution.
  *
  * @author BoondockSulfur
- * @version 2.1.1
+ * @version 2.2.0
  */
 public class ConsoleDiscordPlugin extends JavaPlugin {
 
-    private volatile JDA jda;
     private Messages messages;
-    private RateLimiter rateLimiter;
-    private AuditLogger auditLogger;
+    // Read by JDA threads, replaced on reload
+    private volatile RateLimiter rateLimiter;
+    private volatile AuditLogger auditLogger;
     private PerformanceMonitor performanceMonitor;
     private MessageCleanup messageCleanup;
     private volatile LogFormatter logFormatter;
     private volatile LogFilter logFilter;
 
-    private String logChannelId;
-    private String commandChannelId;
-    private Set<String> allowedUserIds = new HashSet<>();
-    private Set<String> allowedRoleIds = new HashSet<>();
+    private volatile String logChannelId = "";
+    private volatile String commandChannelId = "";
+    private volatile Set<String> allowedUserIds = Set.of();
+    private volatile Set<String> allowedRoleIds = Set.of();
     private volatile Map<String, String> commandAliases = Map.of();
-
-    private DiscordLogAppender appender;
+    private volatile boolean slashCommandAdminOnly = true;
+    private volatile boolean publicReplies = false;
 
     /**
-     * Log channels the bot can't write to; skipped until the next reload.
+     * Per-user and per-role command lists (null = feature disabled).
      */
-    private final Set<String> pausedLogChannels = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private volatile CommandPermissions commandPermissions;
+
+    private DiscordConnection connection;
+
+    private volatile DiscordLogAppender appender;
+    private volatile LogForwarder logForwarder;
     private SchedulerAdapter.CancellableTask logTask;
-    private SchedulerAdapter.CancellableTask watchdogTask;
-
-    private volatile Instant lastConnected = Instant.EPOCH;
-    private volatile long restartBackoffSec = 10;
-
-    /**
-     * How long JDA may try to reconnect by itself before the watchdog restarts it.
-     */
-    private static final long RECONNECT_GRACE_SECONDS = 300;
-
-    /**
-     * Set when building the JDA instance threw (no connection object exists),
-     * so the watchdog retries the start instead of waiting for a status.
-     */
-    private volatile boolean discordStartFailed = false;
-
-    /**
-     * When the watchdog last retried a failed start.
-     */
-    private volatile Instant lastStartAttempt = Instant.EPOCH;
-
-    private boolean debugStatusLogging;
+    private volatile boolean debugStatusLogging;
     private int logFlushTicks;
-    private int maxCommandsPerMinute;
+    private volatile int maxCommandsPerMinute;
     private String language;
 
     // Command feedback (capture command output and reply on Discord)
-    private boolean commandFeedbackEnabled;
-    private long feedbackCollectTicks;
+    private volatile boolean commandFeedbackEnabled;
+    private volatile long feedbackCollectTicks;
 
     // Startup/Shutdown notifications
     private boolean notifyStartup;
@@ -136,32 +106,7 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
      */
     private volatile boolean startupNotificationPending = false;
 
-    // Update checker
-    private boolean updateCheckEnabled;
-    private volatile ModrinthUpdateChecker updateChecker;
-    private SchedulerAdapter.CancellableTask updateTask;
-
-    /**
-     * Version the Discord channel was last told about (set once the message
-     * was actually delivered), so the periodic re-check doesn't repeat it.
-     */
-    private volatile String notifiedDiscordVersion;
-
-    /**
-     * Version online operators were last told about; operators joining
-     * later are told by UpdateNotifyListener.
-     */
-    private volatile String notifiedIngameVersion;
-
-    /**
-     * Flag to prevent watchdog from working during shutdown/reload.
-     */
-    private volatile boolean isShuttingDown = false;
-
-    /**
-     * Lock for synchronizing Discord connection restarts.
-     */
-    private final Object restartLock = new Object();
+    private UpdateNotifier updateNotifier;
 
     /**
      * Set on reload; the config validation runs once the next time JDA
@@ -175,7 +120,17 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
      */
     @Override
     public void onEnable() {
-        isShuttingDown = false;
+        connection = new DiscordConnection(this, new DiscordConnection.Callbacks() {
+            @Override
+            public void onInstalled(JDA jda) {
+                onDiscordInstalled(jda);
+            }
+
+            @Override
+            public void onConnected(JDA jda) {
+                onDiscordConnected(jda);
+            }
+        });
         serverStartTime = System.currentTimeMillis();
         saveDefaultConfig();
         mergeDefaultConfig();
@@ -190,24 +145,36 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         // static, but JDA is relocated, so it only affects this plugin.
         MessageRequest.setDefaultMentions(EnumSet.noneOf(Message.MentionType.class));
 
-        // Let the blocklist see through server-side aliases ("rl" -> "reload").
+        // Let the command filter see through server-side aliases: registered
+        // aliases ("rl" -> "reload") and aliases from commands.yml, which
+        // run their own command lines.
         CommandSecurity.setLabelResolver(label -> {
             org.bukkit.command.Command cmd = Bukkit.getCommandMap().getCommand(label);
             return cmd != null ? cmd.getName() : null;
         });
+        CommandSecurity.setAliasExpander(label -> {
+            for (Map.Entry<String, String[]> entry : Bukkit.getCommandAliases().entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(label)) {
+                    return Arrays.asList(entry.getValue());
+                }
+            }
+            return null;
+        });
 
-        getServer().getPluginManager().registerEvents(new UpdateNotifyListener(this), this);
+        updateNotifier = new UpdateNotifier(this);
+        getServer().getPluginManager().registerEvents(new UpdateNotifyListener(updateNotifier), this);
+        CdrCommand cdr = new CdrCommand(this);
+        PluginCommand cdrCommand = getCommand("cdr");
+        if (cdrCommand != null) {
+            cdrCommand.setExecutor(cdr);
+            cdrCommand.setTabCompleter(cdr);
+        }
 
-        reloadPlugin();
+        reloadPlugin(true);
 
         if (messages != null) {
             getLogger().info(messages.getRaw("plugin.enabled"));
         }
-
-        // Startup notification is sent once JDA reaches CONNECTED
-        // (see JdaStatusListener); a fixed delay would silently skip it
-        // whenever the Discord login takes longer.
-        startupNotificationPending = notifyStartup && jda != null;
     }
 
     /**
@@ -222,46 +189,13 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
 
             YamlConfiguration defaultConfig = YamlConfiguration.loadConfiguration(
                     new InputStreamReader(defaultStream));
-            FileConfiguration userConfig = getConfig();
-
-            boolean changed = false;
-            for (String key : defaultConfig.getKeys(true)) {
-                if (isInsideUserMap(userConfig, key)) {
-                    continue;
-                }
-                if (!userConfig.contains(key, true)) {
-                    userConfig.set(key, defaultConfig.get(key));
-                    changed = true;
-                }
-            }
-
-            if (changed) {
+            if (ConfigMerger.mergeMissing(getConfig(), defaultConfig)) {
                 saveConfig();
                 getLogger().info("Config updated: new options from default config have been added.");
             }
         } catch (Exception e) {
             getLogger().warning("Could not merge default config: " + e.getMessage());
         }
-    }
-
-    /**
-     * Sections whose entries belong to the admin (aliases, categories,
-     * patterns). Their default entries are only added when the whole section
-     * is missing, otherwise a deleted entry would come back on every start.
-     */
-    private static final List<String> USER_MAP_SECTIONS = List.of(
-            "command-aliases.aliases",
-            "log-categories.categories",
-            "log-categories.patterns"
-    );
-
-    private static boolean isInsideUserMap(FileConfiguration userConfig, String key) {
-        for (String section : USER_MAP_SECTIONS) {
-            if (key.startsWith(section + ".") && userConfig.contains(section, true)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -287,23 +221,32 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
      */
     @Override
     public void onDisable() {
-        isShuttingDown = true;
+        if (connection == null) {
+            return;
+        }
+        connection.setShuttingDown(true);
         getLogger().info("[ConsoleDiscord] Plugin shutting down...");
 
-        // Send shutdown notification (blocks with a hard 5s timeout)
-        JDA current = jda;
-        if (notifyShutdown && current != null && current.getStatus() == JDA.Status.CONNECTED) {
-            sendShutdownNotification(current);
+        JDA current = connection.get();
+        if (current != null && current.getStatus() == JDA.Status.CONNECTED) {
+            // Last console lines first (max. 3s), then the shutdown notice (max. 5s)
+            LogForwarder forwarder = logForwarder;
+            if (forwarder != null) {
+                forwarder.flushRemaining(current, Duration.ofSeconds(3));
+            }
+            if (notifyShutdown) {
+                sendShutdownNotification(current);
+            }
         }
 
-        // Under the restart lock, so a watchdog restart in progress finishes
-        // first and its new connection is shut down here instead of leaking.
-        synchronized (restartLock) {
-            cancelWatchdog();
-            cancelUpdateTask();
+        // Under the connection lock (only held briefly); a connection still
+        // being built sees the shutdown and discards itself instead of leaking.
+        synchronized (connection.lock()) {
+            connection.cancelWatchdog();
+            updateNotifier.stop();
             stopPerformanceMonitor();
             stopMessageCleanup();
-            stopDiscordStuff(true);
+            connection.stop(true);
             removeLogAppender();
 
             if (auditLogger != null) {
@@ -321,7 +264,8 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
     // ----------------------------------------------------------------
 
     public JDA getJda() {
-        return jda;
+        DiscordConnection current = connection;
+        return current != null ? current.get() : null;
     }
 
     public Messages getMessages() {
@@ -368,6 +312,73 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         return false;
     }
 
+    public boolean isSlashCommandAdminOnly() {
+        return slashCommandAdminOnly;
+    }
+
+    /**
+     * Whether /mc results are visible to the whole channel instead of only the caller.
+     */
+    public boolean isPublicReplies() {
+        return publicReplies;
+    }
+
+    /**
+     * Commands a whitelisted user may run according to command-permissions.
+     *
+     * @param userId The Discord user ID
+     * @param member The guild member (for roles), may be null
+     * @return The permitted base commands ("*" = all), or null if per-role limits are off
+     */
+    public Set<String> getPermittedCommands(String userId, Member member) {
+        CommandPermissions permissions = commandPermissions;
+        if (permissions == null) {
+            return null;
+        }
+        List<String> roleIds = member == null ? List.of()
+                : member.getRoles().stream().map(role -> role.getId()).toList();
+        return permissions.resolve(userId, roleIds);
+    }
+
+    public boolean isMessageContentEnabled() {
+        return connection == null || connection.isMessageContentEnabled();
+    }
+
+    public String getLogChannelId() {
+        return logChannelId;
+    }
+
+    public int getLogQueueSize() {
+        DiscordLogAppender current = appender;
+        return current != null ? current.getQueueSize() : 0;
+    }
+
+    public int getAllowedUserCount() {
+        return allowedUserIds.size();
+    }
+
+    public int getAllowedRoleCount() {
+        return allowedRoleIds.size();
+    }
+
+    public ModrinthUpdateChecker getUpdateChecker() {
+        return updateNotifier != null ? updateNotifier.getChecker() : null;
+    }
+
+    /**
+     * Starts a manual message cleanup.
+     *
+     * @return false if auto-cleanup is disabled
+     */
+    public boolean triggerCleanup() {
+        MessageCleanup cleanup = messageCleanup;
+        if (cleanup == null) {
+            return false;
+        }
+        cleanup.cleanupNow();
+        return true;
+    }
+
     public boolean isCommandFeedbackEnabled() {
         return commandFeedbackEnabled;
     }
@@ -390,28 +401,35 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
     // Reload & Commands
     // ----------------------------------------------------------------
 
-    private void reloadPlugin() {
-        synchronized (restartLock) {
+    /**
+     * Reloads config and restarts all components (/cdr reload).
+     */
+    public void reload() {
+        reloadPlugin(false);
+    }
+
+    private void reloadPlugin(boolean initial) {
+        synchronized (connection.lock()) {
             try {
-                reloadPluginLocked();
+                reloadPluginLocked(initial);
             } finally {
                 // Never leave watchdog and log flushing switched off for good
-                isShuttingDown = false;
+                connection.setShuttingDown(false);
             }
         }
     }
 
-    private void reloadPluginLocked() {
-        isShuttingDown = true;
-        pausedLogChannels.clear();
+    private void reloadPluginLocked(boolean initial) {
+        connection.setShuttingDown(true);
+        connection.resetRejections();
         getLogger().info(messages != null ? messages.getRaw("plugin.reloading") : "[ConsoleDiscord] Reloading...");
 
         reloadConfig();
         FileConfiguration cfg = getConfig();
 
         // Basic config
-        this.logChannelId = cfg.getString("log-channel-id", "");
-        this.commandChannelId = cfg.getString("command-channel-id", "");
+        this.logChannelId = configuredId(cfg, "log-channel-id");
+        this.commandChannelId = configuredId(cfg, "command-channel-id");
         this.allowedUserIds = loadIdList(cfg, "allowed-user-ids");
         this.allowedRoleIds = loadIdList(cfg, "allowed-role-ids");
         this.logFlushTicks = cfg.getInt("log-flush-ticks", 40);
@@ -422,13 +440,16 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         // Command feedback
         this.commandFeedbackEnabled = cfg.getBoolean("command-feedback.enabled", true);
         this.feedbackCollectTicks = cfg.getLong("command-feedback.collect-ticks", 20L);
+        this.publicReplies = cfg.getBoolean("command-feedback.public-replies", false);
 
         // Notifications
         this.notifyStartup = cfg.getBoolean("notifications.startup", true);
         this.notifyShutdown = cfg.getBoolean("notifications.shutdown", true);
-
-        // Update checker
-        this.updateCheckEnabled = cfg.getBoolean("update-checker.enabled", true);
+        if (initial) {
+            // Sent the first time JDA reaches CONNECTED (see onDiscordConnected),
+            // whichever start attempt gets there; set before connecting.
+            startupNotificationPending = notifyStartup;
+        }
 
         // Initialize messages
         if (messages == null) {
@@ -450,6 +471,9 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         // Load command aliases
         loadCommandAliases(cfg);
 
+        // Per-user / per-role command lists
+        loadCommandPermissions(cfg);
+
         // Initialize audit logger (shut down the previous instance so its
         // writer thread doesn't leak and a disabled audit really stops)
         if (auditLogger != null) {
@@ -462,9 +486,10 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         if (auditEnabled) {
             String auditFile = cfg.getString("command-audit.log-file", "audit.log");
             boolean logToDiscord = cfg.getBoolean("command-audit.log-to-discord", false);
-            String auditChannelId = cfg.getString("command-audit.audit-channel-id", "");
+            String auditChannelId = configuredId(cfg, "command-audit.audit-channel-id");
             long maxFileSizeMb = cfg.getLong("command-audit.max-file-size-mb", 10);
-            auditLogger = new AuditLogger(this, auditFile, logToDiscord, auditChannelId, maxFileSizeMb);
+            int maxBackups = cfg.getInt("command-audit.max-backups", 5);
+            auditLogger = new AuditLogger(this, auditFile, logToDiscord, auditChannelId, maxFileSizeMb, maxBackups);
         }
 
         // Initialize log formatter
@@ -480,26 +505,28 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         Map<String, LogFilter.CategoryFilter> categoryFilters = loadCategoryFilters(cfg);
         logFilter = new LogFilter(logLevels, ignorePatterns, categoryFilters, categoriesEnabled);
 
-        cancelWatchdog();
-        cancelUpdateTask();
+        connection.cancelWatchdog();
+        updateNotifier.stop();
         stopPerformanceMonitor();
         stopMessageCleanup();
         // Don't wait for the old connection here: /cdr reload runs on the
         // main thread, and awaiting the JDA shutdown can take seconds.
-        stopDiscordStuff(false);
+        connection.stop(false);
         removeLogAppender();
 
-        isShuttingDown = false;
+        connection.setShuttingDown(false);
 
-        startDiscordStuff();
         // Channel validation must wait until JDA is CONNECTED (the cache
-        // is empty right after build()); JdaStatusListener triggers it.
+        // is empty right after build()); onDiscordConnected triggers it.
         configValidationPending = true;
         setupLogAppender();
-        startWatchdog();
         startPerformanceMonitor(cfg);
         startMessageCleanup(cfg);
-        startUpdateChecker(cfg);
+        updateNotifier.start(cfg);
+        // Built on an async thread (login can take seconds); it is handed to
+        // the components above once it exists.
+        connection.requestConnection();
+        connection.startWatchdog();
 
         getLogger().info(messages.getRaw("plugin.reloaded"));
     }
@@ -507,10 +534,26 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
     private void loadCommandSecurity(FileConfiguration cfg) {
         boolean securityEnabled = cfg.getBoolean("command-security.enabled", true);
         List<String> blockedCommands = cfg.getStringList("command-security.blocked-commands");
+        List<String> allowedCommands = cfg.getStringList("command-security.allowed-commands");
+        String modeName = cfg.getString("command-security.mode", "blocklist").trim().toLowerCase(Locale.ROOT);
+        CommandSecurity.Mode mode = switch (modeName) {
+            case "allowlist" -> CommandSecurity.Mode.ALLOWLIST;
+            case "blocklist" -> CommandSecurity.Mode.BLOCKLIST;
+            default -> {
+                getLogger().warning(messages.get("security.invalid_mode", "mode", modeName));
+                yield CommandSecurity.Mode.BLOCKLIST;
+            }
+        };
+        slashCommandAdminOnly = cfg.getBoolean("command-security.slash-command-admin-only", true);
 
-        CommandSecurity.configure(securityEnabled, blockedCommands);
+        CommandSecurity.configure(securityEnabled, mode, blockedCommands, allowedCommands);
 
-        if (securityEnabled) {
+        if (securityEnabled && mode == CommandSecurity.Mode.ALLOWLIST) {
+            Set<String> allowed = CommandSecurity.getAllowedCommands();
+            getLogger().info(messages.get("security.commands_allowed",
+                    "count", String.valueOf(allowed.size()),
+                    "commands", String.join(", ", allowed)));
+        } else if (securityEnabled) {
             Set<String> blocked = CommandSecurity.getBlockedCommands();
             if (!blocked.isEmpty()) {
                 getLogger().info(messages.get("security.commands_blocked",
@@ -560,11 +603,51 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
             if (item == null) continue;
             String id = String.valueOf(item).trim();
             // Skip empty strings and placeholder values
-            if (!id.isEmpty() && !id.equals("123456789012345678")) {
+            if (!id.isEmpty() && !isPlaceholderId(id)) {
                 ids.add(id);
             }
         }
-        return ids;
+        return Set.copyOf(ids);
+    }
+
+    /**
+     * Example IDs from the default config and README; they count as "not set".
+     */
+    private static final Set<String> PLACEHOLDER_IDS = Set.of(
+            "123456789012345678", "987654321098765432", "876543210987654321");
+
+    static boolean isPlaceholderId(String id) {
+        return PLACEHOLDER_IDS.contains(id.trim());
+    }
+
+    /**
+     * Reads a Discord ID from the config; empty if missing or a placeholder.
+     */
+    private static String configuredId(FileConfiguration cfg, String path) {
+        String id = String.valueOf(cfg.get(path, "")).trim();
+        return isPlaceholderId(id) ? "" : id;
+    }
+
+    private void loadCommandPermissions(FileConfiguration cfg) {
+        if (!cfg.getBoolean("command-permissions.enabled", false)) {
+            commandPermissions = null;
+            return;
+        }
+        commandPermissions = new CommandPermissions(
+                readCommandLists(cfg.getConfigurationSection("command-permissions.users")),
+                readCommandLists(cfg.getConfigurationSection("command-permissions.roles")),
+                cfg.getStringList("command-permissions.default"));
+        getLogger().info(messages.getRaw("security.permissions_enabled"));
+    }
+
+    private static Map<String, List<String>> readCommandLists(ConfigurationSection section) {
+        Map<String, List<String>> lists = new HashMap<>();
+        if (section != null) {
+            for (String id : section.getKeys(false)) {
+                lists.put(id, section.getStringList(id));
+            }
+        }
+        return lists;
     }
 
     private Map<String, LogFilter.CategoryFilter> loadCategoryFilters(FileConfiguration cfg) {
@@ -575,7 +658,10 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
 
         if (categoriesSection != null && patternsSection != null) {
             for (String category : categoriesSection.getKeys(false)) {
-                String channelId = categoriesSection.getString(category, "");
+                String channelId = categoriesSection.getString(category, "").trim();
+                if (isPlaceholderId(channelId)) {
+                    channelId = "";
+                }
                 List<String> patterns = patternsSection.getStringList(category);
 
                 if (!channelId.isBlank() && !patterns.isEmpty()) {
@@ -613,346 +699,6 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         }
     }
 
-    @Override
-    public boolean onCommand(
-            @NotNull CommandSender sender,
-            @NotNull Command command,
-            @NotNull String label,
-            @NotNull String[] args
-    ) {
-        if (!command.getName().equalsIgnoreCase("cdr")) {
-            return false;
-        }
-
-        if (args.length == 0) {
-            sender.sendMessage(ChatColor.YELLOW + messages.get("command.usage",
-                    "usage", ChatColor.GOLD + messages.getRaw("command.usage_cdr")));
-            return true;
-        }
-
-        String sub = args[0].toLowerCase(Locale.ROOT);
-
-        if (sub.equals("reload")) {
-            if (!sender.hasPermission("consolediscord.reload")) {
-                sender.sendMessage(ChatColor.RED + messages.getRaw("command.no_permission"));
-                return true;
-            }
-
-            reloadPlugin();
-            sender.sendMessage(ChatColor.GREEN + messages.getRaw("command.reload_success"));
-            return true;
-        }
-
-        if (sub.equals("debug")) {
-            if (!sender.hasPermission("consolediscord.debug")) {
-                sender.sendMessage(ChatColor.RED + messages.getRaw("command.no_permission"));
-                return true;
-            }
-
-            if (args.length == 1) {
-                boolean newVal = !isDebugStatusLogging();
-                setDebugStatusLogging(newVal);
-                String status = newVal ? ChatColor.GREEN + messages.getRaw("status.on")
-                                       : ChatColor.RED + messages.getRaw("status.off");
-                sender.sendMessage(ChatColor.YELLOW + messages.get("command.debug_status", "status", status));
-                return true;
-            }
-
-            String mode = args[1].toLowerCase(Locale.ROOT);
-            switch (mode) {
-                case "on" -> {
-                    setDebugStatusLogging(true);
-                    sender.sendMessage(ChatColor.YELLOW + messages.get("command.debug_status",
-                            "status", ChatColor.GREEN + messages.getRaw("status.on")));
-                }
-                case "off" -> {
-                    setDebugStatusLogging(false);
-                    sender.sendMessage(ChatColor.YELLOW + messages.get("command.debug_status",
-                            "status", ChatColor.RED + messages.getRaw("status.off")));
-                }
-                case "status" -> {
-                    String status = isDebugStatusLogging()
-                            ? ChatColor.GREEN + messages.getRaw("status.on")
-                            : ChatColor.RED + messages.getRaw("status.off");
-                    sender.sendMessage(ChatColor.YELLOW + messages.get("command.debug_status", "status", status));
-                }
-                default -> sender.sendMessage(ChatColor.RED + messages.getRaw("command.usage_cdr"));
-            }
-            return true;
-        }
-
-        if (sub.equals("status")) {
-            if (!sender.hasPermission("consolediscord.status")) {
-                sender.sendMessage(ChatColor.RED + messages.getRaw("command.no_permission"));
-                return true;
-            }
-
-            sendStatus(sender);
-            return true;
-        }
-
-        if (sub.equals("cleanup")) {
-            if (!sender.hasPermission("consolediscord.cleanup")) {
-                sender.sendMessage(ChatColor.RED + messages.getRaw("command.no_permission"));
-                return true;
-            }
-
-            if (messageCleanup == null) {
-                sender.sendMessage(ChatColor.RED + messages.getRaw("command.cleanup_disabled"));
-            } else {
-                messageCleanup.cleanupNow();
-                sender.sendMessage(ChatColor.GREEN + messages.getRaw("command.cleanup_started"));
-            }
-            return true;
-        }
-
-        sender.sendMessage(ChatColor.RED + messages.getRaw("command.unknown_subcommand"));
-        return true;
-    }
-
-    /**
-     * Sends a status overview (connection, channels, queue, whitelist) to the sender.
-     */
-    private void sendStatus(CommandSender sender) {
-        JDA current = jda;
-
-        sender.sendMessage(ChatColor.GOLD + messages.getRaw("status.header"));
-        sender.sendMessage(ChatColor.YELLOW + messages.get("status.version",
-                "version", getDescription().getVersion()));
-        sender.sendMessage(ChatColor.YELLOW + messages.get("status.server_type",
-                "type", SchedulerAdapter.isFolia() ? "Folia" : "Paper/Spigot"));
-
-        String jdaStatus = current != null ? current.getStatus().toString() : messages.getRaw("status.not_started");
-        sender.sendMessage(ChatColor.YELLOW + messages.get("status.discord", "status",
-                (current != null && current.getStatus() == JDA.Status.CONNECTED
-                        ? ChatColor.GREEN : ChatColor.RED) + jdaStatus + ChatColor.YELLOW));
-
-        sender.sendMessage(ChatColor.YELLOW + messages.get("status.log_channel",
-                "status", describeChannel(current, logChannelId)));
-        sender.sendMessage(ChatColor.YELLOW + messages.get("status.command_channel",
-                "status", describeChannel(current, commandChannelId)));
-
-        int queued = appender != null ? appender.getQueueSize() : 0;
-        sender.sendMessage(ChatColor.YELLOW + messages.get("status.log_queue",
-                "count", String.valueOf(queued)));
-
-        sender.sendMessage(ChatColor.YELLOW + messages.get("status.whitelist",
-                "users", String.valueOf(allowedUserIds.size()),
-                "roles", String.valueOf(allowedRoleIds.size())));
-
-        if (updateChecker != null && updateChecker.isUpdateAvailable()) {
-            sender.sendMessage(ChatColor.GOLD + messages.get("status.update_available",
-                    "version", updateChecker.getLatestVersion()));
-        }
-    }
-
-    /**
-     * Describes a configured channel for the status output:
-     * not set, valid (with name) or not found.
-     */
-    private String describeChannel(JDA current, String channelId) {
-        if (channelId == null || channelId.isBlank()) {
-            return ChatColor.GRAY + messages.getRaw("status.not_set") + ChatColor.YELLOW;
-        }
-        if (current == null || current.getStatus() != JDA.Status.CONNECTED) {
-            return ChatColor.GRAY + channelId + ChatColor.YELLOW;
-        }
-        TextChannel channel = current.getTextChannelById(channelId);
-        if (channel == null) {
-            return ChatColor.RED + messages.get("status.channel_invalid", "id", channelId) + ChatColor.YELLOW;
-        }
-        return ChatColor.GREEN + "#" + channel.getName() + ChatColor.YELLOW;
-    }
-
-    @Override
-    public List<String> onTabComplete(
-            @NotNull CommandSender sender,
-            @NotNull Command command,
-            @NotNull String alias,
-            @NotNull String[] args
-    ) {
-        if (!command.getName().equalsIgnoreCase("cdr")) {
-            return Collections.emptyList();
-        }
-
-        if (args.length == 1) {
-            List<String> subs = new ArrayList<>();
-            if (sender.hasPermission("consolediscord.reload")) subs.add("reload");
-            if (sender.hasPermission("consolediscord.debug")) subs.add("debug");
-            if (sender.hasPermission("consolediscord.status")) subs.add("status");
-            if (sender.hasPermission("consolediscord.cleanup")) subs.add("cleanup");
-            return filterCompletions(subs, args[0]);
-        }
-
-        if (args.length == 2 && args[0].equalsIgnoreCase("debug")
-                && sender.hasPermission("consolediscord.debug")) {
-            return filterCompletions(List.of("on", "off", "status"), args[1]);
-        }
-
-        return Collections.emptyList();
-    }
-
-    private List<String> filterCompletions(List<String> options, String input) {
-        String lower = input.toLowerCase(Locale.ROOT);
-        List<String> result = new ArrayList<>();
-        for (String option : options) {
-            if (option.startsWith(lower)) {
-                result.add(option);
-            }
-        }
-        return result;
-    }
-
-    // ----------------------------------------------------------------
-    // JDA Start/Stop
-    // ----------------------------------------------------------------
-
-    private void startDiscordStuff() {
-        discordStartFailed = false;
-        lastStartAttempt = Instant.now();
-        // Environment variable takes precedence so the token can be kept
-        // out of config.yml (and out of config backups/support pastes).
-        String token = System.getenv("CONSOLEDISCORD_BOT_TOKEN");
-        if (token != null && !token.isBlank()) {
-            token = token.trim();
-            getLogger().info(messages.getRaw("discord.token_from_env"));
-        } else {
-            token = getConfig().getString("bot-token", "").trim();
-        }
-        if (token.isEmpty() || "DEIN_DISCORD_BOT_TOKEN".equals(token) || "YOUR_DISCORD_BOT_TOKEN".equals(token)) {
-            getLogger().warning(messages.getRaw("discord.no_token"));
-            return;
-        }
-
-        // Validate token format (Discord bot tokens have a specific structure)
-        if (!isValidBotToken(token)) {
-            getLogger().warning(messages.getRaw("discord.invalid_token_format"));
-            return;
-        }
-
-        try {
-            JDABuilder builder = JDABuilder.createDefault(token)
-                    .setStatus(OnlineStatus.ONLINE)
-                    .setActivity(Activity.playing("Minecraft"))
-                    .enableIntents(
-                            GatewayIntent.GUILD_MESSAGES,
-                            GatewayIntent.MESSAGE_CONTENT
-                    )
-                    .setMemberCachePolicy(MemberCachePolicy.NONE)
-                    .addEventListeners(
-                            new DiscordListener(this),
-                            new JdaStatusListener()
-                    );
-
-            if (isShuttingDown) {
-                return;
-            }
-            jda = builder.build();
-
-            // Hand the new connection to every component that sends messages;
-            // after a watchdog restart they would otherwise keep the old,
-            // shut-down instance and silently stop working.
-            if (auditLogger != null) {
-                auditLogger.setJda(jda);
-            }
-            if (performanceMonitor != null) {
-                performanceMonitor.setJda(jda);
-            }
-            if (messageCleanup != null) {
-                messageCleanup.setJda(jda, logChannelId);
-            }
-
-        } catch (Exception ex) {
-            discordStartFailed = true;
-            getLogger().log(java.util.logging.Level.SEVERE,
-                    messages.get("discord.startup_error", "error", ex.getMessage()), ex);
-        }
-    }
-
-    /**
-     * Validates if a string is a valid Discord bot token format.
-     * Discord bot tokens consist of three base64-encoded parts separated by dots.
-     *
-     * @param token The token to validate
-     * @return true if the token format is valid, false otherwise
-     */
-    private boolean isValidBotToken(String token) {
-        if (token == null || token.isEmpty()) {
-            return false;
-        }
-
-        // Discord bot tokens have the format: BASE64.BASE64.BASE64
-        // The first part is the bot's user ID in base64
-        // Basic validation: check for two dots and reasonable length
-        String[] parts = token.split("\\.");
-        if (parts.length != 3) {
-            return false;
-        }
-
-        // Each part should be non-empty and contain valid base64-like characters
-        for (String part : parts) {
-            if (part.isEmpty() || !part.matches("[A-Za-z0-9_-]+")) {
-                return false;
-            }
-        }
-
-        // Token should be at least 50 characters (typical Discord tokens are 59-70 chars)
-        return token.length() >= 50;
-    }
-
-    /**
-     * Shuts down the current Discord connection.
-     *
-     * @param wait true to block until JDA has shut down (plugin disable,
-     *             async watchdog restart), false to finish the shutdown on
-     *             an async thread (reload from the main thread)
-     */
-    private void stopDiscordStuff(boolean wait) {
-        JDA old = jda;
-        if (old == null) {
-            return;
-        }
-        jda = null;
-
-        try {
-            old.getRegisteredListeners().forEach(listener -> {
-                try {
-                    old.removeEventListener(listener);
-                } catch (Exception e) {
-                    // ignore
-                }
-            });
-
-            old.shutdown();
-        } catch (Exception ex) {
-            getLogger().log(java.util.logging.Level.WARNING,
-                    "[ConsoleDiscord] Error during JDA shutdown: ", ex);
-            return;
-        }
-
-        if (wait) {
-            awaitDiscordShutdown(old);
-        } else {
-            SchedulerAdapter.runAsync(this, () -> awaitDiscordShutdown(old));
-        }
-    }
-
-    private void awaitDiscordShutdown(JDA old) {
-        try {
-            if (!old.awaitShutdown(Duration.ofSeconds(5))) {
-                getLogger().warning(messages.getRaw("discord.shutdown_warning"));
-                old.shutdownNow();
-                old.awaitShutdown(Duration.ofSeconds(2));
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            getLogger().warning(messages.getRaw("discord.shutdown_interrupted"));
-        } catch (Exception ex) {
-            getLogger().log(java.util.logging.Level.WARNING,
-                    "[ConsoleDiscord] Error during JDA shutdown: ", ex);
-        }
-    }
-
     // ----------------------------------------------------------------
     // Startup/Shutdown Notifications
     // ----------------------------------------------------------------
@@ -971,7 +717,7 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
             return;
         }
 
-        String version = getDescription().getVersion();
+        String version = getPluginMeta().getVersion();
         int pluginCount = Bukkit.getPluginManager().getPlugins().length;
 
         MessageEmbed embed = new EmbedBuilder()
@@ -1020,302 +766,43 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
     }
 
     // ----------------------------------------------------------------
-    // Update Checker
+    // Connection callbacks
     // ----------------------------------------------------------------
 
     /**
-     * Schedules the update check: once shortly after startup and then
-     * periodically (default every 24h), so long-running servers still
-     * learn about new versions. interval-hours 0 disables the re-check.
+     * A new Discord connection became the current one (connection lock held):
+     * hand it to every component that sends messages, otherwise they would
+     * keep a shut-down instance after a restart and silently stop working.
      */
-    private void startUpdateChecker(FileConfiguration cfg) {
-        if (!updateCheckEnabled) {
-            updateChecker = null;
-            return;
+    private void onDiscordInstalled(JDA fresh) {
+        AuditLogger audit = auditLogger;
+        if (audit != null) {
+            audit.setJda(fresh);
         }
-
-        updateChecker = new ModrinthUpdateChecker(this);
-
-        long intervalHours = cfg.getLong("update-checker.interval-hours", 24);
-        if (intervalHours > 0) {
-            long intervalTicks = intervalHours * 60 * 60 * 20;
-            updateTask = SchedulerAdapter.runAsyncTimer(this, this::checkForUpdates, 40L, intervalTicks);
-        } else {
-            SchedulerAdapter.runAsyncLater(this, this::checkForUpdates, 40L);
+        if (performanceMonitor != null) {
+            performanceMonitor.setJda(fresh);
         }
-    }
-
-    private void cancelUpdateTask() {
-        if (updateTask != null) {
-            updateTask.cancel();
-            updateTask = null;
+        if (messageCleanup != null) {
+            messageCleanup.setJda(fresh, cleanupChannelIds());
         }
-    }
-
-    private void checkForUpdates() {
-        ModrinthUpdateChecker checker = updateChecker;
-        if (checker == null) {
-            return;
-        }
-
-        switch (checker.checkForUpdates()) {
-            case UPDATE_AVAILABLE -> {
-                String latest = checker.getLatestVersion();
-                getLogger().warning(messages.get("update.console_available",
-                        "latest", latest, "current", checker.getCurrentVersion()));
-                getLogger().warning(messages.get("update.console_links",
-                        "modrinth", ModrinthUpdateChecker.MODRINTH_URL,
-                        "curseforge", ModrinthUpdateChecker.CURSEFORGE_URL));
-
-                // Discord and online operators hear about each version once.
-                // If Discord isn't connected yet, JdaStatusListener sends it later.
-                sendUpdateNotification(checker);
-                if (!latest.equals(notifiedIngameVersion)) {
-                    notifiedIngameVersion = latest;
-                    SchedulerAdapter.runGlobal(this, () -> {
-                        for (Player player : Bukkit.getOnlinePlayers()) {
-                            sendUpdateMessage(player);
-                        }
-                    });
-                }
-            }
-            case UP_TO_DATE -> getLogger().info(messages.get("update.console_latest",
-                    "current", checker.getCurrentVersion()));
-            case NO_COMPATIBLE_VERSION -> getLogger().info(messages.get("update.console_no_compatible",
-                    "mc", checker.getMinecraftVersion()));
-            case FAILED -> getLogger().warning(messages.get("update.console_failed",
-                    "error", String.valueOf(checker.getLastError())));
-        }
-    }
-
-    private void sendUpdateNotification(ModrinthUpdateChecker checker) {
-        String latest = checker.getLatestVersion();
-        if (!checker.isUpdateAvailable() || latest == null || latest.equals(notifiedDiscordVersion)) {
-            return;
-        }
-
-        JDA current = jda;
-        if (current == null || current.getStatus() != JDA.Status.CONNECTED
-                || logChannelId == null || logChannelId.isBlank()) {
-            return;
-        }
-
-        TextChannel channel = current.getTextChannelById(logChannelId);
-        if (channel == null) {
-            return;
-        }
-
-        MessageEmbed embed = new EmbedBuilder()
-                .setTitle(messages.getRaw("notification.update_title"))
-                .setColor(Color.ORANGE)
-                .setDescription(messages.getRaw("notification.update_description"))
-                .addField(messages.getRaw("notification.current_version"), checker.getCurrentVersion(), true)
-                .addField(messages.getRaw("notification.latest_version"), checker.getLatestVersion(), true)
-                .addField(messages.getRaw("notification.download"),
-                        "[Modrinth](" + ModrinthUpdateChecker.MODRINTH_URL + ") · "
-                                + "[CurseForge](" + ModrinthUpdateChecker.CURSEFORGE_URL + ")", false)
-                .setTimestamp(Instant.now())
-                .build();
-
-        channel.sendMessageEmbeds(embed).queue(
-                v -> notifiedDiscordVersion = latest,
-                error -> getLogger().warning("Failed to send update notification to Discord: " + error.getMessage())
-        );
     }
 
     /**
-     * Tells a player about an available update, with clickable download
-     * links. Only players with consolediscord.update (operators by default)
-     * receive it.
-     *
-     * @param player The player to notify
+     * The connection reached CONNECTED: run what needs a populated cache.
      */
-    public void sendUpdateMessage(Player player) {
-        ModrinthUpdateChecker checker = updateChecker;
-        if (checker == null || !checker.isUpdateAvailable()
-                || !player.hasPermission("consolediscord.update")) {
-            return;
+    private void onDiscordConnected(JDA current) {
+        if (configValidationPending) {
+            configValidationPending = false;
+            validateConfiguration(current);
         }
 
-        Component prefix = Component.text("[", NamedTextColor.DARK_GRAY)
-                .append(Component.text("ConsoleDiscord", NamedTextColor.GOLD))
-                .append(Component.text("] ", NamedTextColor.DARK_GRAY));
-
-        player.sendMessage(prefix.append(Component.text(messages.get("update.ingame_available",
-                "current", checker.getCurrentVersion(),
-                "latest", checker.getLatestVersion()), NamedTextColor.YELLOW)));
-        player.sendMessage(prefix
-                .append(linkLabel("Modrinth", ModrinthUpdateChecker.MODRINTH_URL))
-                .append(Component.text(" "))
-                .append(linkLabel("CurseForge", ModrinthUpdateChecker.CURSEFORGE_URL)));
-    }
-
-    private Component linkLabel(String label, String url) {
-        return Component.text()
-                .append(Component.text("[", NamedTextColor.DARK_GRAY))
-                .append(Component.text(label, NamedTextColor.AQUA, TextDecoration.UNDERLINED))
-                .append(Component.text("]", NamedTextColor.DARK_GRAY))
-                .clickEvent(ClickEvent.openUrl(url))
-                .hoverEvent(HoverEvent.showText(Component.text(
-                        messages.get("update.ingame_hover", "url", url), NamedTextColor.GRAY)))
-                .build();
-    }
-
-    // ----------------------------------------------------------------
-    // JDA Status Listener
-    // ----------------------------------------------------------------
-
-    private final class JdaStatusListener extends ListenerAdapter {
-        @Override
-        public void onStatusChange(@NotNull StatusChangeEvent event) {
-            JDA.Status newStatus = event.getNewStatus();
-
-            if (debugStatusLogging) {
-                getLogger().info("[ConsoleDiscord] JDA Status: " + newStatus);
-            }
-
-            if (newStatus == JDA.Status.CONNECTED) {
-                lastConnected = Instant.now();
-                restartBackoffSec = 10;
-
-                if (configValidationPending) {
-                    configValidationPending = false;
-                    validateConfiguration(event.getJDA());
-                }
-
-                if (startupNotificationPending) {
-                    startupNotificationPending = false;
-                    sendStartupNotification(event.getJDA());
-                }
-
-                // Deliver an update notice found while Discord was not connected
-                ModrinthUpdateChecker checker = updateChecker;
-                if (checker != null) {
-                    sendUpdateNotification(checker);
-                }
-            }
-        }
-    }
-
-    // ----------------------------------------------------------------
-    // Watchdog
-    // ----------------------------------------------------------------
-
-    private void startWatchdog() {
-        if (watchdogTask != null) {
-            watchdogTask.cancel();
+        if (startupNotificationPending) {
+            startupNotificationPending = false;
+            sendStartupNotification(current);
         }
 
-        watchdogTask = SchedulerAdapter.runAsyncTimer(
-                this,
-                () -> {
-                    if (isShuttingDown) {
-                        return;
-                    }
-
-                    JDA current = jda;
-                    if (current == null) {
-                        retryFailedStart();
-                        return;
-                    }
-
-                    try {
-                        JDA.Status status = current.getStatus();
-
-                        // lastConnected is the last time the connection was seen
-                        // healthy, so the outage is measured from there.
-                        if (status == JDA.Status.CONNECTED) {
-                            lastConnected = Instant.now();
-                            return;
-                        }
-
-                        // A wrong token won't get better by restarting.
-                        if (status == JDA.Status.FAILED_TO_LOGIN) {
-                            return;
-                        }
-
-                        if (lastConnected.equals(Instant.EPOCH)) {
-                            lastConnected = Instant.now();
-                            return;
-                        }
-
-                        // JDA reconnects on its own; only step in when that has
-                        // been stuck for a while, so a restart doesn't race JDA's
-                        // own resume after a short network hiccup.
-                        long threshold = isReconnecting(status)
-                                ? Math.max(restartBackoffSec, RECONNECT_GRACE_SECONDS)
-                                : restartBackoffSec;
-
-                        Duration d = Duration.between(lastConnected, Instant.now());
-                        if (d.getSeconds() >= threshold) {
-                            getLogger().warning(messages.get("discord.reconnecting",
-                                    "seconds", String.valueOf(d.getSeconds()),
-                                    "status", status.toString()));
-
-                            lastConnected = Instant.now();
-                            restartBackoffSec = Math.min(restartBackoffSec * 2, 120);
-
-                            // Restart asynchronously: stopDiscordStuff() waits up to
-                            // ~7s on awaitShutdown, which must not block the main thread.
-                            SchedulerAdapter.runAsync(this, () -> {
-                                synchronized (restartLock) {
-                                    if (!isShuttingDown) {
-                                        stopDiscordStuff(true);
-                                        startDiscordStuff();
-                                    }
-                                }
-                            });
-                        }
-                    } catch (Exception ex) {
-                        getLogger().log(java.util.logging.Level.WARNING,
-                                messages.getRaw("watchdog.error"), ex);
-                    }
-                },
-                200L,
-                200L
-        );
-    }
-
-    /**
-     * Retries a start whose JDA build threw, with the same doubling backoff
-     * as connection restarts. Nothing happens without a usable token.
-     */
-    private void retryFailedStart() {
-        if (!discordStartFailed) {
-            return;
-        }
-        Duration since = Duration.between(lastStartAttempt, Instant.now());
-        if (since.getSeconds() < restartBackoffSec) {
-            return;
-        }
-        restartBackoffSec = Math.min(restartBackoffSec * 2, 120);
-        getLogger().warning(messages.getRaw("discord.retry_start"));
-        SchedulerAdapter.runAsync(this, () -> {
-            synchronized (restartLock) {
-                if (!isShuttingDown && jda == null && discordStartFailed) {
-                    startDiscordStuff();
-                }
-            }
-        });
-    }
-
-    /**
-     * States in which JDA is still logging in or reconnecting by itself.
-     */
-    private static boolean isReconnecting(JDA.Status status) {
-        return switch (status) {
-            case INITIALIZING, INITIALIZED, LOGGING_IN, CONNECTING_TO_WEBSOCKET,
-                 IDENTIFYING_SESSION, AWAITING_LOGIN_CONFIRMATION, LOADING_SUBSYSTEMS,
-                 DISCONNECTED, RECONNECT_QUEUED, WAITING_TO_RECONNECT, ATTEMPTING_TO_RECONNECT -> true;
-            default -> false;
-        };
-    }
-
-    private void cancelWatchdog() {
-        if (watchdogTask != null) {
-            watchdogTask.cancel();
-            watchdogTask = null;
-        }
+        // Deliver an update notice found while Discord was not connected
+        updateNotifier.notifyDiscord();
     }
 
     // ----------------------------------------------------------------
@@ -1333,7 +820,7 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         long cooldown = cfg.getLong("performance-alerts.alert-cooldown", 300);
 
         performanceMonitor = new PerformanceMonitor(this, messages, lowTps, highMemory, cooldown, logChannelId);
-        performanceMonitor.setJda(jda);
+        performanceMonitor.setJda(getJda());
         performanceMonitor.start();
     }
 
@@ -1360,8 +847,24 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
         long hours = Math.max(1L, cfg.getLong("auto-cleanup.check-interval-hours", 24));
 
         messageCleanup = new MessageCleanup(this, days, hours);
-        messageCleanup.setJda(jda, logChannelId);
+        messageCleanup.setJda(getJda(), cleanupChannelIds());
         messageCleanup.start();
+    }
+
+    /**
+     * Channels the auto-cleanup works on: the log channel and the category
+     * channels. The audit channel is left alone on purpose.
+     */
+    private List<String> cleanupChannelIds() {
+        Set<String> ids = new LinkedHashSet<>();
+        if (logChannelId != null && !logChannelId.isBlank()) {
+            ids.add(logChannelId);
+        }
+        LogFilter filter = logFilter;
+        if (filter != null) {
+            ids.addAll(filter.getCategoryChannelIds());
+        }
+        return List.copyOf(ids);
     }
 
     private void stopMessageCleanup() {
@@ -1386,7 +889,8 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
             Configuration config = ctx.getConfiguration();
             LoggerConfig rootLoggerConfig = config.getRootLogger();
 
-            DiscordLogAppender discordAppender = DiscordLogAppender.create("ConsoleDiscordAppender", getName());
+            // Filtered before buffering, so ignored lines don't push out real ones
+            DiscordLogAppender discordAppender = DiscordLogAppender.create("ConsoleDiscordAppender", getName(), logFilter);
             discordAppender.start();
 
             // Register at the least severe configured level, so DEBUG/TRACE
@@ -1395,6 +899,8 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
             ctx.updateLoggers();
 
             this.appender = discordAppender;
+            this.logForwarder = new LogForwarder(getLogger(), messages, discordAppender,
+                    logFilter, logFormatter, logChannelId);
 
             if (logFlushTicks > 0) {
                 logTask = SchedulerAdapter.runAsyncTimer(this, this::flushDiscordLogs, logFlushTicks, logFlushTicks);
@@ -1431,113 +937,21 @@ public class ConsoleDiscordPlugin extends JavaPlugin {
                                      : "[ConsoleDiscord] Error removing LogAppender: ", ex);
         } finally {
             appender = null;
+            logForwarder = null;
         }
     }
 
     private void flushDiscordLogs() {
-        if (isShuttingDown) {
+        if (connection.isShuttingDown()) {
             return;
         }
-        JDA current = jda;
+        JDA current = getJda();
         if (current == null || current.getStatus() != JDA.Status.CONNECTED) {
             return;
         }
-        if (logChannelId == null || logChannelId.isBlank()) {
-            return;
-        }
-        if (appender == null) {
-            return;
-        }
-
-        LogFilter filter = logFilter;
-        List<String> lines = appender.drain(50);
-        if (lines.isEmpty()) {
-            return;
-        }
-
-        // Filter logs
-        List<String> filteredLines = new ArrayList<>();
-        Map<String, List<String>> categorizedLogs = new HashMap<>();
-
-        for (String line : lines) {
-            if (!filter.shouldSendLog(line)) {
-                continue;
-            }
-
-            String category = filter.getCategory(line);
-            if (category != null) {
-                categorizedLogs.computeIfAbsent(category, k -> new ArrayList<>()).add(line);
-            } else {
-                filteredLines.add(line);
-            }
-        }
-
-        // Send regular logs to main channel
-        if (!filteredLines.isEmpty()) {
-            sendLogsToChannel(current, logChannelId, filteredLines);
-        }
-
-        // Send categorized logs to their respective channels
-        for (Map.Entry<String, List<String>> entry : categorizedLogs.entrySet()) {
-            String channelId = filter.getCategoryChannelId(entry.getKey());
-            if (channelId != null && !channelId.isBlank()) {
-                sendLogsToChannel(current, channelId, entry.getValue());
-            }
-        }
-    }
-
-    private void sendLogsToChannel(JDA current, String channelId, List<String> lines) {
-        if (pausedLogChannels.contains(channelId)) {
-            return;
-        }
-        TextChannel channel = current.getTextChannelById(channelId);
-        if (channel == null) {
-            return;
-        }
-
-        LogFormatter formatter = logFormatter;
-        try {
-            if (formatter.isUsingEmbeds()) {
-                for (List<MessageEmbed> group : formatter.formatAsEmbedGroups(lines)) {
-                    if (!group.isEmpty()) {
-                        channel.sendMessageEmbeds(group).queue(
-                                success -> {},
-                                error -> handleLogSendError(channelId, error)
-                        );
-                    }
-                }
-            } else {
-                for (String content : formatter.formatAsCodeBlocks(lines)) {
-                    channel.sendMessage(content).queue(
-                            success -> {},
-                            error -> handleLogSendError(channelId, error)
-                    );
-                }
-            }
-        } catch (InsufficientPermissionException e) {
-            // JDA checks cached permissions before queueing and throws right away
-            handleLogSendError(channelId, e);
-        }
-    }
-
-    /**
-     * Pauses forwarding to a single channel the bot can't write to, instead of
-     * stopping the whole log task; the other channels keep working.
-     * /cdr reload clears the pause.
-     */
-    private void handleLogSendError(String channelId, Throwable error) {
-        boolean noAccess = error instanceof InsufficientPermissionException
-                || (error instanceof ErrorResponseException ere
-                    && (ere.getErrorResponse() == ErrorResponse.MISSING_ACCESS
-                        || ere.getErrorResponse() == ErrorResponse.MISSING_PERMISSIONS
-                        || ere.getErrorResponse() == ErrorResponse.UNKNOWN_CHANNEL));
-        if (noAccess) {
-            if (pausedLogChannels.add(channelId)) {
-                getLogger().warning(messages.get("log.channel_paused", "id", channelId));
-            }
-        } else {
-            getLogger().log(java.util.logging.Level.WARNING,
-                    messages.getRaw("log.send_failed"), error);
+        LogForwarder forwarder = logForwarder;
+        if (forwarder != null) {
+            forwarder.flush(current);
         }
     }
 }

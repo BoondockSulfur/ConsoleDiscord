@@ -2,7 +2,7 @@
 
 A modern, feature-rich Paper/Spigot plugin that integrates Discord with your Minecraft server. Focused on **intelligent console forwarding** with professional monitoring and security features.
 
-[![Version](https://img.shields.io/badge/version-2.1.1-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/BoondockSulfur/ConsoleDiscord)
 [![Java](https://img.shields.io/badge/Java-21+-orange.svg)](https://openjdk.org/projects/jdk/21/)
 [![Paper](https://img.shields.io/badge/Paper-1.21%20–%2026.x-green.svg)](https://papermc.io/)
 
@@ -144,7 +144,7 @@ log-categories:
     security:
       - ".*Banned player.*"
       - ".*UUID mismatch.*"
-      - ".*issued server command.*op.*"
+      - "issued server command: /(op|deop)\\b"
     performance:
       - ".*Can't keep up.*"
       - ".*Server tick.*"
@@ -159,11 +159,16 @@ log-categories:
 # Command security - Block dangerous commands
 command-security:
   enabled: true
-  # Default: only op/deop blocked
-  # You can add more: stop, restart, whitelist, ban-ip, reload, etc.
+  mode: "blocklist"            # or "allowlist"
+  allowed-commands: []         # used in allowlist mode
+  slash-command-admin-only: true
   blocked-commands:
     - "op"
     - "deop"
+    - "stop"
+    - "restart"
+    - "reload"
+    - "ban-ip"
 
 # Command aliases - Shortcuts for frequent commands
 command-aliases:
@@ -179,6 +184,15 @@ command-audit:
   log-file: "audit.log"           # File in plugin folder
   log-to-discord: false           # Also log to Discord?
   audit-channel-id: ""            # Discord channel for audit logs
+  max-file-size-mb: 10            # Rotate at this size
+  max-backups: 5                  # Keep audit.log.1 ... audit.log.5
+
+# Per-user / per-role command lists (optional)
+command-permissions:
+  enabled: false
+  users: {}                       # "USER_ID": ["*"]
+  roles: {}                       # "ROLE_ID": ["list", "tps", "kick"]
+  default: ["*"]                  # Whitelisted users without an entry
 ```
 </details>
 
@@ -261,7 +275,15 @@ command-security:
 
 **Want to block more?** Simply add entries like `"whitelist"`, `"ban"`, `"kick"` or `"execute"`.
 
-**Want to allow everything?** Set `enabled: false` or empty the list.
+**Want to allow only specific commands?** Set `mode: "allowlist"` and list them under `allowed-commands`. This is the safer choice: a blocklist can never cover every dangerous plugin command (permission plugins, sudo, plugin managers).
+
+**Who sees `/mc`?** With `slash-command-admin-only: true` (default) only administrators see `/mc` in Discord. Grant it to roles under *Server Settings → Integrations → your bot*. The plugin's `allowed-user-ids` / `allowed-role-ids` check applies either way; `!mc` is not affected.
+
+**Different commands per role?** Enable `command-permissions` and list the allowed base commands per role or user ID (`"*"` = everything that passes the command filter). A user gets the combined entries of their user ID and all their roles; users without an entry get `default`. Nested commands (`execute … run`) and aliases are checked too.
+
+**Want /mc results visible to the channel?** Set `command-feedback.public-replies: true` (default: only the caller sees them).
+
+**Want to allow everything?** Set `enabled: false`. An empty list falls back to the defaults.
 
 **Always blocked** (not configurable): ALL namespaced commands (`minecraft:op`, `essentials:op`, `anyplugin:cmd`, ...) — otherwise the blocklist could be bypassed via namespaces. Leading slashes are stripped before checking, so `/op` cannot bypass `op` either.
 
@@ -375,7 +397,20 @@ This plugin is **fully compatible with Folia**! It automatically detects whether
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### Version 2.1.1 (Current) - Bugfix & Compatibility Release
+### Version 2.2.0 (Current) - Security & Stability Release
+
+**New in 2.2.0:**
+- 🔒 **Note:** `/mc` is now only visible to administrators by default. Grant it to roles under *Server Settings → Integrations*, or set `command-security.slash-command-admin-only: false`. `!mc` is not affected.
+- ✨ Optional allowlist mode (`command-security.mode: allowlist`)
+- ✨ Optional command lists per role / user (`command-permissions`)
+- ✨ Optional public `/mc` results (`command-feedback.public-replies`)
+- ⚡ Works without the Message Content Intent (`!mc` is then disabled)
+- 🔒 Aliases from `commands.yml` are checked against the command filter
+- 🔒 Denied attempts can no longer flood the audit log
+- ⚡ Log floods no longer pile up; the last lines are sent on shutdown
+- 🐛 No more false memory alerts; auto-cleanup and category channels are more reliable
+
+### Version 2.1.1 - Bugfix & Compatibility Release
 
 **New in 2.1.1:**
 - 📦 One jar for Minecraft 1.21.x and 26.x (Paper & Folia)

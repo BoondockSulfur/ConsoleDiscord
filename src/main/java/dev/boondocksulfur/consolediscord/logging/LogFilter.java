@@ -46,20 +46,36 @@ public class LogFilter {
      * @return true if the line should be sent, false if filtered out
      */
     public boolean shouldSendLog(String line) {
-        // Check log level
         Level level = extractLevel(line);
         if (level != null && !allowedLevels.contains(level)) {
             return false;
         }
+        return !isIgnored(line);
+    }
 
-        // Check ignore patterns (uses find() so patterns don't need .* wrapping)
+    /**
+     * Checks a log event level against the allowed levels.
+     *
+     * @param level The event's level
+     * @return true if lines of this level are forwarded
+     */
+    public boolean isLevelAllowed(Level level) {
+        return level != null && allowedLevels.contains(level);
+    }
+
+    /**
+     * Checks a line against the ignore patterns (find(), so patterns don't need .* wrapping).
+     *
+     * @param line The log line
+     * @return true if the line must not be forwarded
+     */
+    public boolean isIgnored(String line) {
         for (Pattern pattern : ignorePatterns) {
             if (pattern.matcher(line).find()) {
-                return false;
+                return true;
             }
         }
-
-        return true;
+        return false;
     }
 
     /**
@@ -107,6 +123,24 @@ public class LogFilter {
     public String getCategoryChannelId(String category) {
         CategoryFilter filter = categoryFilters.get(category);
         return filter != null ? filter.channelId : null;
+    }
+
+    /**
+     * Gets the channel IDs of all active categories.
+     *
+     * @return The category channel IDs, empty if categories are disabled
+     */
+    public Set<String> getCategoryChannelIds() {
+        if (!categoriesEnabled) {
+            return Set.of();
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (CategoryFilter filter : categoryFilters.values()) {
+            if (filter.channelId != null && !filter.channelId.isBlank()) {
+                ids.add(filter.channelId);
+            }
+        }
+        return ids;
     }
 
     /**

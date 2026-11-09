@@ -6,7 +6,7 @@
 
     <groupId>dev.boondocksulfur</groupId>
     <artifactId>consolediscord</artifactId>
-    <version>2.1.1</version>
+    <version>2.2.0</version>
     <packaging>jar</packaging>
     <name>ConsoleDiscord</name>
     <description>Advanced Discord integration with log forwarding, remote commands, performance monitoring, and Folia support</description>
@@ -81,6 +81,14 @@
             <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Mockito: JDA- und Bukkit-Objekte in Tests nachbilden -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.21.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -100,6 +108,25 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+                <configuration>
+                    <!-- Mockito als Agent laden: Neuere JDKs erlauben das
+                         nachträgliche Selbst-Anhängen nicht mehr -->
+                    <argLine>-javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
+                </configuration>
+            </plugin>
+
+            <!-- Stellt ${org.mockito:mockito-core:jar} (Pfad zum Jar) für den Agent bereit -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.7.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- JDA ins Plugin reinshaden -->

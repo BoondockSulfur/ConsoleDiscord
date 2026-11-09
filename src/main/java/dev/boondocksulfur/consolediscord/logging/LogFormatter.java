@@ -27,8 +27,12 @@ public class LogFormatter {
     /** Minecraft formatting codes (§6, §l, §x§f§f…) and ANSI escape sequences. */
     private static final Pattern COLOR_CODES = Pattern.compile("§[0-9A-FK-ORXa-fk-orx]|\u001B\\[[0-9;]*[A-Za-z]");
 
-    /** URLs are left as they are: Discord doesn't apply markdown inside links. */
-    private static final Pattern URL = Pattern.compile("https?://\\S+");
+    /**
+     * URLs are left as they are: Discord doesn't apply markdown inside links.
+     * A backtick ends the match (it is no valid URL character), so it is
+     * escaped like any other text and can't open inline code.
+     */
+    private static final Pattern URL = Pattern.compile("https?://[^\\s`]+");
 
     /** Markdown that only takes effect at the start of a line (quote, heading, list, subtext). */
     private static final Pattern LINE_START_MARKDOWN = Pattern.compile("(?m)^(\\s*)([>#-])");
@@ -70,14 +74,24 @@ public class LogFormatter {
      * @return The messages ready for Discord, empty if there is nothing to send
      */
     public List<String> formatAsCodeBlocks(List<String> lines) {
+        return formatLinesAsCodeBlocks(parseAll(lines));
+    }
+
+    /**
+     * Formats log lines with known levels as code blocks.
+     *
+     * @param lines The log lines to format
+     * @return The messages ready for Discord, empty if there is nothing to send
+     */
+    public List<String> formatLinesAsCodeBlocks(List<LogLine> lines) {
         List<String> messages = new ArrayList<>();
         // Room for the opening and closing fences
         int maxContent = MAX_MESSAGE_LENGTH - 6;
         StringBuilder content = new StringBuilder();
 
-        for (String line : lines) {
-            String plain = stripColorCodes(line);
-            String formattedLine = escapeCodeBlock(useEmojis ? addEmojiToLine(plain) : plain);
+        for (LogLine line : lines) {
+            String plain = stripColorCodes(line.text());
+            String formattedLine = escapeCodeBlock(useEmojis ? addEmojiToLine(plain, line.level()) : plain);
 
             // Truncate single lines that could never fit into one message
             if (formattedLine.length() > maxContent) {
@@ -98,18 +112,6 @@ public class LogFormatter {
     }
 
     /**
-     * Formats log lines as a single code block message. Lines that don't fit
-     * into one message are left out; prefer {@link #formatAsCodeBlocks(List)}.
-     *
-     * @param lines The log lines to format
-     * @return The first message, or an empty string if there is nothing to send
-     */
-    public String formatAsCodeBlock(List<String> lines) {
-        List<String> messages = formatAsCodeBlocks(lines);
-        return messages.isEmpty() ? "" : messages.get(0);
-    }
-
-    /**
      * Discord limit: total characters across all embeds in a single message.
      */
     private static final int MAX_TOTAL_EMBED_SIZE = 6000;
@@ -122,21 +124,27 @@ public class LogFormatter {
      * @return List of embed groups, each group safe to send in one message
      */
     public List<List<MessageEmbed>> formatAsEmbedGroups(List<String> lines) {
+        return formatLinesAsEmbedGroups(parseAll(lines));
+    }
+
+    /**
+     * Formats log lines with known levels as Discord embeds, split into
+     * groups that each respect Discord's 6000 character limit per message.
+     *
+     * @param entries The log lines to format
+     * @return List of embed groups, each group safe to send in one message
+     */
+    public List<List<MessageEmbed>> formatLinesAsEmbedGroups(List<LogLine> entries) {
         List<List<MessageEmbed>> groups = new ArrayList<>();
 
-        if (lines.isEmpty()) {
+        if (entries.isEmpty()) {
             return groups;
-        }
-
-        List<LogEntry> entries = new ArrayList<>();
-        for (String line : lines) {
-            entries.add(parseLogLine(line));
         }
 
         List<MessageEmbed> currentGroup = new ArrayList<>();
         int currentGroupSize = 0;
 
-        for (List<LogEntry> batch : splitIntoBatches(entries)) {
+        for (List<LogLine> batch : splitIntoBatches(entries)) {
             MessageEmbed embed = createEmbedForBatch(batch).build();
             int embedLength = embed.getLength();
 
@@ -172,34 +180,17 @@ public class LogFormatter {
     }
 
     /**
-     * Formats log lines as Discord embeds.
-     * Note: The returned list may exceed Discord's 6000 char total limit.
-     * Prefer {@link #formatAsEmbedGroups(List)} for safe sending.
-     *
-     * @param lines The log lines to format
-     * @return List of embeds ready for Discord
-     */
-    public List<MessageEmbed> formatAsEmbeds(List<String> lines) {
-        List<List<MessageEmbed>> groups = formatAsEmbedGroups(lines);
-        List<MessageEmbed> all = new ArrayList<>();
-        for (List<MessageEmbed> group : groups) {
-            all.addAll(group);
-        }
-        return all;
-    }
-
-    /**
      * Splits entries into embed batches of at most embedBatchSize entries whose
      * text fits into one description, so a long entry (e.g. a stack trace)
      * starts a new embed instead of pushing the following entries out.
      */
-    private List<List<LogEntry>> splitIntoBatches(List<LogEntry> entries) {
+    private List<List<LogLine>> splitIntoBatches(List<LogLine> entries) {
         int room = MAX_DESCRIPTION_LENGTH;
-        List<List<LogEntry>> batches = new ArrayList<>();
-        List<LogEntry> batch = new ArrayList<>();
+        List<List<LogLine>> batches = new ArrayList<>();
+        List<LogLine> batch = new ArrayList<>();
         int batchChars = 0;
 
-        for (LogEntry entry : entries) {
+        for (LogLine entry : entries) {
             int length = formatEntry(entry).length();
             if (!batch.isEmpty() && (batch.size() >= embedBatchSize || batchChars + length > room)) {
                 batches.add(batch);
@@ -218,7 +209,7 @@ public class LogFormatter {
     /**
      * Creates an embed for a batch of log entries.
      */
-    private EmbedBuilder createEmbedForBatch(List<LogEntry> entries) {
+    private EmbedBuilder createEmbedForBatch(List<LogLine> entries) {
         if (entries.isEmpty()) {
             return new EmbedBuilder().setDescription("No logs");
         }
@@ -233,7 +224,7 @@ public class LogFormatter {
 
         // Add entries as description
         StringBuilder description = new StringBuilder();
-        for (LogEntry entry : entries) {
+        for (LogLine entry : entries) {
             String formatted = formatEntry(entry);
 
             // Discord embed description limit is 4096
@@ -258,10 +249,10 @@ public class LogFormatter {
      * Formats one entry: level emoji and badge, followed by the full console
      * line (time, thread and level as in the server log).
      */
-    private String formatEntry(LogEntry entry) {
-        String emoji = useEmojis ? getEmojiForLevel(entry.level) : "";
-        String text = neutralizeMaskedLinks(escapeMarkdown(stripColorCodes(entry.line)));
-        return String.format("%s `%s` %s\n", emoji, entry.level.name(), text);
+    private String formatEntry(LogLine entry) {
+        String emoji = useEmojis ? getEmojiForLevel(entry.level()) : "";
+        String text = neutralizeMaskedLinks(escapeMarkdown(stripColorCodes(entry.text())));
+        return String.format("%s `%s` %s\n", emoji, entry.level().name(), text);
     }
 
     /**
@@ -307,17 +298,25 @@ public class LogFormatter {
         return text.replace("](", "]\u200B(");
     }
 
+    private List<LogLine> parseAll(List<String> lines) {
+        List<LogLine> parsed = new ArrayList<>(lines.size());
+        for (String line : lines) {
+            parsed.add(parseLogLine(line));
+        }
+        return parsed;
+    }
+
     /**
-     * Parses a log line into a LogEntry.
+     * Parses a plain log line (level read from the "[Thread/LEVEL]:" header).
      */
-    private LogEntry parseLogLine(String line) {
+    private LogLine parseLogLine(String line) {
         Matcher matcher = LOG_LEVEL_PATTERN.matcher(line);
 
         if (matcher.find()) {
-            return new LogEntry(parseLevel(matcher.group(2)), line);
+            return new LogLine(parseLevel(matcher.group(2)), line);
         }
 
-        return new LogEntry(Level.INFO, line);
+        return new LogLine(Level.INFO, line);
     }
 
     /**
@@ -338,12 +337,12 @@ public class LogFormatter {
     /**
      * Gets the dominant (most severe) log level from entries.
      */
-    private Level getDominantLevel(List<LogEntry> entries) {
+    private Level getDominantLevel(List<LogLine> entries) {
         Level highest = Level.INFO;
 
-        for (LogEntry entry : entries) {
-            if (entry.level.isMoreSpecificThan(highest)) {
-                highest = entry.level;
+        for (LogLine entry : entries) {
+            if (entry.level().isMoreSpecificThan(highest)) {
+                highest = entry.level();
             }
         }
 
@@ -388,19 +387,14 @@ public class LogFormatter {
     /**
      * Adds emoji to a log line based on its level.
      */
-    private String addEmojiToLine(String line) {
+    private String addEmojiToLine(String line, Level level) {
+        String emoji = getEmojiForLevel(level);
         Matcher matcher = LOG_LEVEL_PATTERN.matcher(line);
-
         if (matcher.find()) {
-            String levelStr = matcher.group(2);
-            Level level = parseLevel(levelStr);
-            String emoji = getEmojiForLevel(level);
-
-            // Insert emoji after the level bracket
+            // Insert emoji after the "[Thread/LEVEL]:" header
             return line.substring(0, matcher.end()) + " " + emoji + " " + line.substring(matcher.end()).stripLeading();
         }
-
-        return line;
+        return emoji + " " + line;
     }
 
     /**
@@ -419,19 +413,5 @@ public class LogFormatter {
      */
     public boolean isUsingEmbeds() {
         return useEmbeds;
-    }
-
-    /**
-     * Simple container for a log entry.
-     */
-    private static class LogEntry {
-        final Level level;
-        /** The full console line as written by the appender (incl. time and thread). */
-        final String line;
-
-        LogEntry(Level level, String line) {
-            this.level = level;
-            this.line = line;
-        }
     }
 }
